@@ -3,7 +3,6 @@ import {
   Controller,
   Post,
   HttpCode,
-  UnauthorizedException,
   BadRequestException,
 } from '@nestjs/common';
 import { ApiOperation, ApiResponse } from '@nestjs/swagger';
@@ -60,19 +59,11 @@ export class PaymentsController {
     description: 'User must be authenticated to create checkout',
   })
   async createCheckout(@UserInfo() userInfo: UserInfoType) {
-    if (!userInfo.userId) {
-      throw new UnauthorizedException(
-        'User must be authenticated to create checkout',
-      );
-    }
-
-    // Get current cart
     const cart = await this.cartService.getOrCreateCart(
       userInfo.userId,
       userInfo.sessionId,
     );
 
-    // Validate cart is not empty
     if (!cart.items || cart.items.length === 0) {
       throw new BadRequestException('Cart is empty');
     }
@@ -80,6 +71,7 @@ export class PaymentsController {
     return this.paymentsService.createCheckoutPreferenceFromCart(
       cart,
       userInfo.userId,
+      userInfo.sessionId,
     );
   }
 

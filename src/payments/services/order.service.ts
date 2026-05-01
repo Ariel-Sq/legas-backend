@@ -23,12 +23,14 @@ export class OrderService {
   ) {}
 
   async createOrder(data: {
-    userId: string;
+    userId?: string;
+    sessionId?: string;
     items: CheckoutItemDto[];
     totalAmount: number;
   }): Promise<Order> {
     const order = this.orderRepository.create({
-      userId: data.userId,
+      userId: data.userId || undefined,
+      sessionId: data.sessionId || undefined,
       status: OrderStatus.PENDING,
       totalAmount: data.totalAmount,
     });

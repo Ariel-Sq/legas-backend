@@ -46,11 +46,15 @@ export class PaymentsService {
     });
   }
 
-  async createCheckoutPreferenceFromCart(cart: Cart, userId: string) {
-    // Validate that user exists
-    await this.usersService.findById(userId);
+  async createCheckoutPreferenceFromCart(
+    cart: Cart,
+    userId?: string,
+    sessionId?: string,
+  ) {
+    if (userId) {
+      await this.usersService.findById(userId);
+    }
 
-    // Validate stock for all cart items
     const stockErrors = await this.validateCartStock(cart);
     if (stockErrors.length > 0) {
       throw new BadRequestException({
@@ -60,15 +64,12 @@ export class PaymentsService {
       });
     }
 
-    // Convert cart items to preference items
     const items = await Promise.all(
       cart.items.map(this.mapCartItemToPreferenceItem.bind(this)),
     );
 
-    // Calculate total amount from cart
     const totalAmount = cart.totalPrice;
 
-    // Create order using cart data
     const checkoutItems: CheckoutItemDto[] = cart.items.map((item) => ({
       id: item.productVariationId,
       quantity: item.quantity,
@@ -76,6 +77,7 @@ export class PaymentsService {
 
     const order = await this.orderService.createOrder({
       userId,
+      sessionId,
       items: checkoutItems,
       totalAmount,
     });
@@ -232,9 +234,7 @@ export class PaymentsService {
       switch (paymentData.status) {
         case 'approved':
           this.logger.log(`Payment ${paymentId} approved.`);
-          // Clear cart after successful payment
-          await this.clearCartAfterPayment(order.userId);
-          // Update inventory after successful payment
+          await this.clearCartAfterPayment(order.userId, order.sessionId);
           await this.updateInventory(order);
           // TODO: Send order confirmation email
           break;
@@ -257,24 +257,24 @@ export class PaymentsService {
     }
   }
 
-  private async clearCartAfterPayment(userId: string): Promise<void> {
+  private async clearCartAfterPayment(
+    userId?: string,
+    sessionId?: string,
+  ): Promise<void> {
     try {
-      // Get user's cart
-      const cart = await this.cartService.getOrCreateCart(userId, undefined);
+      const cart = await this.cartService.getOrCreateCart(userId, sessionId);
 
       if (cart && cart.items && cart.items.length > 0) {
-        // Clear the cart
         await this.cartService.clearCart(cart.id);
         this.logger.log(
-          `Cart cleared for user ${userId} after successful payment`,
+          `Cart cleared for ${userId ? `user ${userId}` : `session ${sessionId}`} after successful payment`,
         );
       }
     } catch (error: any) {
       this.logger.error(
-        `Failed to clear cart for user ${userId}: ${error.message}`,
+        `Failed to clear cart: ${error.message}`,
         error.stack,
       );
-      // Don't throw error - payment was successful, cart clearing is secondary
     }
   }
 

@@ -28,6 +28,9 @@ export class Order {
   @Column({ nullable: true })
   userId: string;
 
+  @Column({ nullable: true })
+  sessionId: string;
+
   @ManyToOne(() => User, { nullable: true, onDelete: 'SET NULL' })
   @JoinColumn({ name: 'userId' })
   user: User;
