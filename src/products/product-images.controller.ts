@@ -4,6 +4,7 @@ import {
   Delete,
   Param,
   Req,
+  UseGuards,
   UseInterceptors,
   UploadedFiles,
   ParseUUIDPipe,
@@ -18,9 +19,11 @@ import {
   ApiOperation,
   ApiTags,
 } from '@nestjs/swagger';
+import { AdminGuard } from '@app/auth/guards/admin.guard';
 
-@ApiTags('Product Images')
-@Controller('product-variations/:variationId/images')
+@ApiTags('Admin / Product Images')
+@Controller('admin/product-variations/:variationId/images')
+@UseGuards(AdminGuard)
 export class ProductImagesController {
   constructor(private readonly productImagesService: ProductImagesService) {}
 

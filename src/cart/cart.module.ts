@@ -6,6 +6,7 @@ import { Cart } from './entities/cart.entity';
 import { CartItem } from './entities/cart-item.entity';
 import { ProductsModule } from '@app/products/products.module';
 import { UsersModule } from '@app/users/users.module';
+import { AdminGuard } from '@app/auth/guards/admin.guard';
 
 /**
  * Cart module for shopping cart functionality
@@ -18,7 +19,7 @@ import { UsersModule } from '@app/users/users.module';
     UsersModule,
   ],
   controllers: [CartController],
-  providers: [CartService],
+  providers: [CartService, AdminGuard],
   exports: [CartService],
 })
 export class CartModule {}

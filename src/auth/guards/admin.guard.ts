@@ -3,18 +3,18 @@ import {
   CanActivate,
   ExecutionContext,
   UnauthorizedException,
+  ForbiddenException,
 } from '@nestjs/common';
+import { UsersService } from '@app/users/users.service';
+import { UserRole } from '@app/users/entities/user.entity';
 
-/**
- * Guard to verify that the user has administrator permissions
- * Works with AuthMiddleware to check authentication and admin status
- */
 @Injectable()
 export class AdminGuard implements CanActivate {
-  canActivate(context: ExecutionContext): boolean {
+  constructor(private readonly usersService: UsersService) {}
+
+  async canActivate(context: ExecutionContext): Promise<boolean> {
     const request = context.switchToHttp().getRequest();
 
-    // AuthMiddleware should have already set req.user
     if (!request.user) {
       throw new UnauthorizedException(
         'Authentication middleware not properly configured.',
@@ -27,15 +27,16 @@ export class AdminGuard implements CanActivate {
       );
     }
 
-    // TODO: Implement real admin permissions verification
-    // For now, allow all requests to avoid build errors
-    // In production, this should check against a database or external service
-    // if the user has admin role
+    const user = await this.usersService.findByIdSafe(request.user.id);
+    if (!user) {
+      throw new UnauthorizedException('User not found.');
+    }
 
-    // Check if the user has admin role
-    // if (user.role !== 'admin') {
-    //   throw new ForbiddenException('Access denied: administrator permissions required');
-    // }
+    if (user.role !== UserRole.OWNER && user.role !== UserRole.ADMIN) {
+      throw new ForbiddenException(
+        'Access denied: administrator permissions required',
+      );
+    }
 
     return true;
   }

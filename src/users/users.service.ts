@@ -30,6 +30,22 @@ export class UsersService {
     return user;
   }
 
+  async findByIdSafe(id: string): Promise<User | null> {
+    return this.usersRepository.findOne({ where: { id } });
+  }
+
+  async findAllPaginated(
+    page: number,
+    limit: number,
+  ): Promise<{ data: User[]; total: number; page: number; limit: number }> {
+    const [data, total] = await this.usersRepository.findAndCount({
+      skip: (page - 1) * limit,
+      take: limit,
+      order: { createdAt: 'DESC' },
+    });
+    return { data, total, page, limit };
+  }
+
   async findByEmail(email: string): Promise<User | null> {
     return this.usersRepository.findOne({ where: { email } });
   }
@@ -51,16 +67,11 @@ export class UsersService {
       throw new ConflictException(`User with email ${email} already exists`);
     }
 
-    // For local auth, ensure password is provided
-    if (
-      createUserDto.authProvider === AuthProvider.LOCAL ||
-      !createUserDto.authProvider
-    ) {
-      if (!createUserDto.password) {
-        throw new BadRequestException(
-          'Password is required for local authentication',
-        );
-      }
+    // Public registration is always LOCAL — password required.
+    if (!createUserDto.password) {
+      throw new BadRequestException(
+        'Password is required for local authentication',
+      );
     }
 
     // Generate verification token for email verification

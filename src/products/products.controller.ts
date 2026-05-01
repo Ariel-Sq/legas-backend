@@ -1,118 +1,32 @@
-import {
-  Controller,
-  Post,
-  Patch,
-  Delete,
-  Body,
-  Param,
-  Req,
-  UseInterceptors,
-  UploadedFiles,
-} from '@nestjs/common';
-import { FilesInterceptor } from '@nestjs/platform-express';
+import { Controller, Get, Param, ParseUUIDPipe, Query } from '@nestjs/common';
+import { ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { ProductVariationsService } from './products.service';
-import { ProductImagesService } from './product-images.service';
 import { ProductVariation } from './entities/product-variation.entity';
-import { CreateProductDto } from './dto/create-product.dto';
-import { UpdateProductDto } from './dto/update-product.dto';
-import { ApiConsumes, ApiBody, ApiOperation } from '@nestjs/swagger';
+import { PaginationQueryDto } from '@app/common/dto/pagination-query.dto';
 
+/**
+ * Public read-only endpoints for product variations.
+ * Create / update / delete live in AdminProductsController.
+ */
+@ApiTags('Products')
 @Controller('products')
 export class ProductsController {
-  constructor(
-    private readonly productsService: ProductVariationsService,
-    private readonly productImagesService: ProductImagesService,
-  ) { }
+  constructor(private readonly productsService: ProductVariationsService) {}
 
-  // ===== POST METHODS (Create Operations) =====
-
-  @Post()
-  @ApiConsumes('multipart/form-data')
-  @ApiOperation({
-    summary: 'Create a new product with multiple images',
-    description:
-      'Creates a new product with the ability to upload multiple images.',
-  })
-  @ApiBody({
-    schema: {
-      type: 'object',
-      properties: {
-        sku: { type: 'string', example: 'MES-RUS-001' },
-        name: { type: 'string', example: 'Mesa de Comedor Rústica' },
-        price: { type: 'number', example: 45000 },
-        attributes: {
-          type: 'object',
-          example: { color: 'red', size: 'M' },
-          description: 'Product attributes as key-value pairs',
-        },
-        stock: {
-          type: 'number',
-          example: 50,
-          description: 'Available stock quantity',
-        },
-        template_id: {
-          type: 'string',
-          format: 'uuid',
-          example: '123e4567-e89b-12d3-a456-426614174000',
-          description: 'Product template ID to associate with this product',
-        },
-        files: {
-          type: 'array',
-          items: { type: 'string', format: 'binary' },
-          description: 'ProductVariation images (select multiple files)',
-        },
-      },
-      required: ['sku', 'name', 'price'],
-    },
-  })
-  @UseInterceptors(FilesInterceptor('files', 10))
-  async create(
-    @Req() request: any,
-    @UploadedFiles() files?: Express.Multer.File[],
-  ): Promise<ProductVariation> {
-    // Parse form fields from multipart/form-data
-    const productData: CreateProductDto = {
-      sku: request.body.sku,
-      name: request.body.name,
-      price: parseFloat(request.body.price),
-      attributes: request.body.attributes
-        ? JSON.parse(request.body.attributes)
-        : undefined,
-      stock: request.body.stock ? parseInt(request.body.stock, 10) : 0,
-      template_id: request.body.template_id,
-    };
-
-    const product = await this.productsService.create(productData);
-
-    if (files && files.length > 0) {
-      await this.productImagesService.create(product.id, files);
-    }
-
-    return this.productsService.findByIdWithDetails(product.id);
+  @Get()
+  @ApiOperation({ summary: 'List product variations (paginated)' })
+  @ApiResponse({ status: 200, description: 'Paginated list.' })
+  async findAll(@Query() query: PaginationQueryDto) {
+    return this.productsService.findAllPaginated(query.page, query.limit);
   }
 
-  // ===== PATCH METHODS (Partial Update Operations) =====
-
-  @Patch(':id')
-  @ApiOperation({ summary: 'Update product data (JSON only)' })
-  @ApiBody({
-    type: UpdateProductDto,
-    description: 'Product data to update',
-  })
-  async updateJson(
-    @Param('id') id: string,
-    @Body() productData: UpdateProductDto,
+  @Get(':id')
+  @ApiOperation({ summary: 'Get a product variation by ID' })
+  @ApiResponse({ status: 200, type: ProductVariation })
+  @ApiResponse({ status: 404, description: 'Not found' })
+  async findOne(
+    @Param('id', ParseUUIDPipe) id: string,
   ): Promise<ProductVariation> {
-    return this.productsService.update(id, productData);
-  }
-
-  // ===== DELETE METHODS (Delete Operations) =====
-
-  @Delete(':id')
-  async delete(
-    @Param('id') id: string,
-  ): Promise<{ success: boolean; message: string }> {
-    await this.productsService.delete(id);
-    return { success: true, message: 'ProductVariation deleted successfully' };
+    return this.productsService.findByIdWithDetails(id);
   }
 }

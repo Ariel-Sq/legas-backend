@@ -12,6 +12,8 @@ import { ReviewImage } from './entities/review-image.entity';
 import { User } from '../users/entities/user.entity';
 import { ProductVariation } from '../products/entities/product-variation.entity';
 import { Order } from '../payments/entities/order.entity';
+import { UsersModule } from '@app/users/users.module';
+import { AdminGuard } from '@app/auth/guards/admin.guard';
 
 @Module({
   imports: [
@@ -24,9 +26,10 @@ import { Order } from '../payments/entities/order.entity';
       Order,
     ]),
     CacheModule.register(),
+    UsersModule,
   ],
   controllers: [ReviewsController, RatingsController, ModerationController],
-  providers: [ReviewsService, ModerationService],
+  providers: [ReviewsService, ModerationService, AdminGuard],
   exports: [ReviewsService, ModerationService],
 })
 export class ReviewsModule {}

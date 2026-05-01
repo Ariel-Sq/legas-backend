@@ -4,13 +4,16 @@ import {
   Logger,
   BadRequestException,
   Inject,
+  UseGuards,
 } from '@nestjs/common';
 import { ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { DatabaseService } from '../database/database.service';
 import type { IStorageService } from '../storage/storage.interface';
+import { AdminGuard } from '@app/auth/guards/admin.guard';
 
-@ApiTags('Development')
-@Controller('development')
+@ApiTags('Admin / Development')
+@Controller('admin/development')
+@UseGuards(AdminGuard)
 export class DevelopmentController {
   private readonly logger = new Logger(DevelopmentController.name);
 

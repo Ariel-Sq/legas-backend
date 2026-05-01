@@ -25,8 +25,12 @@ const SESSION_CONFIG = {
 } as const;
 
 /**
- * Unified middleware for handling both authenticated and anonymous users
- * Single source of truth for user identification and session management
+ * Unified middleware for handling both authenticated and anonymous users.
+ *
+ * SECURITY MODEL: `x-user-id` is trusted as-is. The deployment relies on an
+ * upstream gateway (or VPN/network boundary for the admin surface) to strip
+ * any client-supplied `x-user-id` before forwarding. Replace with JWT
+ * verification when issuance is implemented (see TODO.md).
  */
 @Injectable()
 export class AuthMiddleware implements NestMiddleware {
@@ -76,6 +80,8 @@ export class AuthMiddleware implements NestMiddleware {
       res.cookie(SESSION_CONFIG.cookieName, sessionId, {
         httpOnly: SESSION_CONFIG.httpOnly,
         maxAge: SESSION_CONFIG.maxAge,
+        secure: process.env.NODE_ENV === 'production',
+        sameSite: 'lax',
       });
 
       // Set in request cookies for server-side access

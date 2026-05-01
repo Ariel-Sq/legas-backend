@@ -134,6 +134,24 @@ export class ProductVariationsService {
     return product;
   }
 
+  async findAllPaginated(
+    page: number,
+    limit: number,
+  ): Promise<{
+    data: ProductVariation[];
+    total: number;
+    page: number;
+    limit: number;
+  }> {
+    const [data, total] = await this.productsRepository.findAndCount({
+      relations: ['images'],
+      skip: (page - 1) * limit,
+      take: limit,
+      order: { created_at: 'DESC' },
+    });
+    return { data, total, page, limit };
+  }
+
   /**
    * Find products by category ID
    */

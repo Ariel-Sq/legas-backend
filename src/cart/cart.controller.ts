@@ -6,7 +6,9 @@ import {
   Param,
   Delete,
   Patch,
+  UseGuards,
 } from '@nestjs/common';
+import { AdminGuard } from '@app/auth/guards/admin.guard';
 import { CartService } from './cart.service';
 import { AddToCartDto } from './dto/add-to-cart.dto';
 import { UpdateCartItemDto } from './dto/update-cart-item.dto';
@@ -34,7 +36,8 @@ export class CartController {
   // ===== GET METHODS (Read Operations) =====
 
   @Get('all')
-  @ApiOperation({ summary: 'Get all carts' })
+  @UseGuards(AdminGuard)
+  @ApiOperation({ summary: 'Get all carts (admin only)' })
   @ApiResponse({ status: 200, description: 'All carts', type: [Cart] })
   async getAllCarts() {
     return this.cartService.findAll();
@@ -104,7 +107,8 @@ export class CartController {
   }
 
   @Delete('clear-all')
-  @ApiOperation({ summary: 'Delete all carts' })
+  @UseGuards(AdminGuard)
+  @ApiOperation({ summary: 'Delete all carts (admin only)' })
   @ApiResponse({ status: 200, description: 'All carts deleted' })
   async clearAllCarts() {
     await this.cartService.clearAll();
