@@ -1,6 +1,7 @@
 import { NestFactory, Reflector } from '@nestjs/core';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import { ClassSerializerInterceptor, ValidationPipe } from '@nestjs/common';
+import cookieParser from 'cookie-parser';
 import { AppModule } from '@app/app.module';
 import { CORS_ORIGINS, PORT } from '@app/utils/environments';
 import { AuthMiddleware } from '@app/auth/middleware/auth.middleware';
@@ -11,6 +12,9 @@ async function bootstrap() {
 
   // Enable CORS with explicit allowlist
   app.enableCors({ origin: CORS_ORIGINS, credentials: true });
+
+  // Parse Cookie header so AuthMiddleware can read sessionId for anon carts.
+  app.use(cookieParser());
 
   // Apply AuthMiddleware globally for all routes
   const authMiddleware = new AuthMiddleware();

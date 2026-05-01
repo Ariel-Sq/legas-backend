@@ -1,5 +1,7 @@
 import { Injectable, Logger, BadRequestException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { InjectDataSource } from '@nestjs/typeorm';
+import { DataSource } from 'typeorm';
 import { MercadoPagoConfig, Preference, Payment } from 'mercadopago';
 import { ProductVariationsService } from '@app/products/products.service';
 import { UsersService } from '@app/users/users.service';
@@ -10,6 +12,7 @@ import { WebhookNotificationDto } from './dto/webhook.dto';
 import { OrderService } from './services/order.service';
 import { CartService } from '@app/cart/cart.service';
 import { Cart } from '@app/cart/entities/cart.entity';
+import { Order, OrderStatus } from './entities/order.entity';
 
 interface PreferenceItem {
   id: string;
@@ -17,13 +20,6 @@ interface PreferenceItem {
   quantity: number;
   unit_price: number;
   currency_id?: string;
-}
-
-interface StockValidationError {
-  productId: string;
-  productName: string;
-  requestedQuantity: number;
-  availableQuantity: number;
 }
 
 @Injectable()
@@ -37,8 +33,9 @@ export class PaymentsService {
     private usersService: UsersService,
     private orderService: OrderService,
     private cartService: CartService,
+    @InjectDataSource()
+    private readonly dataSource: DataSource,
   ) {
-    // Initialize MercadoPago client with the new SDK format
     this.client = new MercadoPagoConfig({
       accessToken: this.configService.getOrThrow<string>(
         'MERCADO_PAGO_ACCESS_TOKEN',
@@ -46,6 +43,13 @@ export class PaymentsService {
     });
   }
 
+  /**
+   * Reserve stock and create the Order in a single transaction with a
+   * pessimistic_write lock on the involved variations. Stock is decremented
+   * BEFORE the MercadoPago call so concurrent checkouts can never oversell.
+   * If the MP API call fails, compensateFailedCheckout restores the stock
+   * and marks the order CANCELLED.
+   */
   async createCheckoutPreferenceFromCart(
     cart: Cart,
     userId?: string,
@@ -54,95 +58,109 @@ export class PaymentsService {
     if (userId) {
       await this.usersService.findById(userId);
     }
-
-    const stockErrors = await this.validateCartStock(cart);
-    if (stockErrors.length > 0) {
-      throw new BadRequestException({
-        error: 'INSUFFICIENT_STOCK',
-        problems: stockErrors,
-        message: 'Some products do not have sufficient stock',
-      });
+    if (!cart.items || cart.items.length === 0) {
+      throw new BadRequestException('Cart is empty');
     }
-
-    const items = await Promise.all(
-      cart.items.map(this.mapCartItemToPreferenceItem.bind(this)),
-    );
-
-    const totalAmount = cart.totalPrice;
 
     const checkoutItems: CheckoutItemDto[] = cart.items.map((item) => ({
       id: item.productVariationId,
       quantity: item.quantity,
     }));
+    const totalAmount = cart.totalPrice;
 
-    const order = await this.orderService.createOrder({
-      userId,
-      sessionId,
-      items: checkoutItems,
-      totalAmount,
+    // Phase 1 — atomic reserve + order create (no network calls inside).
+    const order = await this.dataSource.transaction(async (manager) => {
+      const ids = checkoutItems.map((i) => i.id);
+      await this.productsService.lockVariationsForUpdate(manager, ids);
+
+      // Atomic decrement; throws BadRequestException if any item is short.
+      for (const item of checkoutItems) {
+        await this.productsService.updateStockWithManager(
+          manager,
+          item.id,
+          -item.quantity,
+        );
+      }
+
+      return this.orderService.createOrderInTx(manager, {
+        userId,
+        sessionId,
+        items: checkoutItems,
+        totalAmount,
+      });
     });
 
-    const preferenceData: PreferenceRequest = {
-      items,
-      back_urls: {
-        success: this.configService.getOrThrow<string>(
-          'MERCADO_PAGO_SUCCESS_URL',
-        ),
-        failure: this.configService.getOrThrow<string>(
-          'MERCADO_PAGO_FAILURE_URL',
-        ),
-        pending: this.configService.getOrThrow<string>(
-          'MERCADO_PAGO_PENDING_URL',
-        ),
-      },
-      auto_return: 'approved',
-      statement_descriptor: 'Ecommerce',
-      external_reference: order.id,
-      notification_url: this.configService.getOrThrow<string>(
-        'MERCADO_PAGO_WEBHOOK_URL',
-      ),
-    };
-
+    // Phase 2 — call MercadoPago after COMMIT. If it fails, compensate.
     try {
+      const items = await Promise.all(
+        cart.items.map(this.mapCartItemToPreferenceItem.bind(this)),
+      );
+
+      const preferenceData: PreferenceRequest = {
+        items,
+        back_urls: {
+          success: this.configService.getOrThrow<string>(
+            'MERCADO_PAGO_SUCCESS_URL',
+          ),
+          failure: this.configService.getOrThrow<string>(
+            'MERCADO_PAGO_FAILURE_URL',
+          ),
+          pending: this.configService.getOrThrow<string>(
+            'MERCADO_PAGO_PENDING_URL',
+          ),
+        },
+        auto_return: 'approved',
+        statement_descriptor: 'Ecommerce',
+        external_reference: order.id,
+        notification_url: this.configService.getOrThrow<string>(
+          'MERCADO_PAGO_WEBHOOK_URL',
+        ),
+      };
+
       const preference = new Preference(this.client);
       const response = await preference.create({ body: preferenceData });
       return response;
     } catch (error: any) {
+      this.logger.error(
+        `MercadoPago preference failed for order ${order.id}: ${error.message}`,
+      );
+      await this.compensateFailedCheckout(order.id);
       throw new Error(
         `Failed to create Mercado Pago preference: ${error.message}`,
       );
     }
   }
 
-  private async validateCartStock(cart: Cart): Promise<StockValidationError[]> {
-    const errors: StockValidationError[] = [];
-
-    for (const item of cart.items) {
-      const product = await this.productsService.findByIdWithDetails(
-        item.productVariationId,
-      );
-
-      if (!product) {
-        errors.push({
-          productId: item.productVariationId,
-          productName: 'Unknown Product',
-          requestedQuantity: item.quantity,
-          availableQuantity: 0,
-        });
-        continue;
-      }
-
-      if (product.stock < item.quantity) {
-        errors.push({
-          productId: item.productVariationId,
-          productName: product.name,
-          requestedQuantity: item.quantity,
-          availableQuantity: product.stock,
-        });
-      }
+  /**
+   * Restore stock and mark the order CANCELLED. Idempotent — repeated calls
+   * after the order has already been compensated are no-ops.
+   */
+  private async compensateFailedCheckout(orderId: string): Promise<void> {
+    const order = await this.orderService.findById(orderId);
+    if (!order) {
+      this.logger.warn(`compensate: order ${orderId} not found`);
+      return;
+    }
+    if (order.status === OrderStatus.CANCELLED) {
+      return;
     }
 
-    return errors;
+    await this.dataSource.transaction(async (manager) => {
+      const ids = order.items.map((i) => i.productVariationId);
+      await this.productsService.lockVariationsForUpdate(manager, ids);
+
+      for (const item of order.items) {
+        await this.productsService.updateStockWithManager(
+          manager,
+          item.productVariationId,
+          item.quantity,
+        );
+      }
+      await manager
+        .getRepository(Order)
+        .update(orderId, { status: OrderStatus.CANCELLED });
+    });
+    this.logger.log(`Compensated stock + cancelled order ${orderId}`);
   }
 
   private async mapCartItemToPreferenceItem(
@@ -162,7 +180,7 @@ export class PaymentsService {
       id: cartItem.productVariationId.toString(),
       quantity: cartItem.quantity,
       title: product.name,
-      unit_price: Number(cartItem.price) / cartItem.quantity, // Price already includes tier logic
+      unit_price: Number(cartItem.price) / cartItem.quantity,
       currency_id: 'ARS',
     };
   }
@@ -177,7 +195,6 @@ export class PaymentsService {
         case 'payment':
           await this.handlePaymentNotification(webhookData.data.id);
           break;
-        // Add more cases for other notification types as needed
         default:
           this.logger.warn(
             `Unhandled webhook notification type: ${webhookData.type}`,
@@ -216,10 +233,6 @@ export class PaymentsService {
         external_reference: response.external_reference,
       };
 
-      // eslint-disable-next-line @typescript-eslint/no-base-to-string, @typescript-eslint/restrict-template-expressions
-      this.logger.log(`Payment ${paymentId} paymentData: ${paymentData}`);
-
-      // Find the order by external reference
       const order = await this.orderService.findById(
         paymentData.external_reference || '',
       );
@@ -227,24 +240,24 @@ export class PaymentsService {
         throw new Error(`Order not found for payment ${paymentId}`);
       }
 
-      // Update order with payment information
+      // Idempotent: same transactionId is a no-op.
       await this.orderService.updateOrderPayment(order, paymentData);
 
-      // Handle different payment statuses
       switch (paymentData.status) {
         case 'approved':
           this.logger.log(`Payment ${paymentId} approved.`);
           await this.clearCartAfterPayment(order.userId, order.sessionId);
-          await this.updateInventory(order);
-          // TODO: Send order confirmation email
+          // Stock was already decremented at checkout — nothing to do.
           break;
         case 'pending':
           this.logger.log(`Payment ${paymentId} is pending.`);
-          // TODO: Send payment pending notification
           break;
         case 'rejected':
-          this.logger.log(`Payment ${paymentId} was rejected.`);
-          // TODO: Send payment failed notification
+        case 'cancelled':
+          this.logger.log(
+            `Payment ${paymentId} ${paymentData.status} — restoring stock.`,
+          );
+          await this.compensateFailedCheckout(order.id);
           break;
         default:
           this.logger.warn(`Unhandled payment status: ${paymentData.status}`);
@@ -275,31 +288,6 @@ export class PaymentsService {
         `Failed to clear cart: ${error.message}`,
         error.stack,
       );
-    }
-  }
-
-  private async updateInventory(order: any): Promise<void> {
-    try {
-      this.logger.log(`Updating inventory for order ${order.id}`);
-
-      for (const item of order.items) {
-        await this.productsService.updateStock(
-          item.productVariationId,
-          -item.quantity, // Reduce stock by purchased quantity
-        );
-        this.logger.log(
-          `Stock updated for product ${item.productVariationId}: -${item.quantity} units`,
-        );
-      }
-
-      this.logger.log(`Inventory updated successfully for order ${order.id}`);
-    } catch (error: any) {
-      this.logger.error(
-        `Failed to update inventory for order ${order.id}: ${error.message}`,
-        error.stack,
-      );
-      // Don't throw error - payment was successful, inventory update is secondary
-      // But this should be monitored as it could lead to overselling
     }
   }
 }

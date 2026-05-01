@@ -73,7 +73,13 @@ export class CartService {
   }
 
   /**
-   * Add a product to the cart
+   * Add a product to the cart.
+   *
+   * NOTE: stock check here is advisory (UX hint only). Authoritative
+   * reservation happens in PaymentsService.createCheckoutPreferenceFromCart
+   * under a pessimistic_write lock + atomic decrement. Two carts can both
+   * pass this check — the loser will fail at checkout, not here.
+   *
    * @param userId - Optional user ID for authenticated users
    * @param sessionId - Optional session ID for anonymous users
    * @param addToCartDto - DTO with product ID and quantity

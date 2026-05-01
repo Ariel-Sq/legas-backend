@@ -53,8 +53,14 @@ export class WebhookValidatorMiddleware implements NestMiddleware {
       .update(manifest)
       .digest('hex');
 
-    // Compare the calculated hash with the received hash
-    if (calculatedHash !== hash) {
+    // Constant-time comparison so an attacker can't probe the secret with
+    // timing differences. timingSafeEqual throws if buffers differ in length.
+    const calcBuf = Buffer.from(calculatedHash, 'hex');
+    const recvBuf = Buffer.from(hash, 'hex');
+    if (
+      calcBuf.length !== recvBuf.length ||
+      !crypto.timingSafeEqual(calcBuf, recvBuf)
+    ) {
       throw new UnauthorizedException('Invalid webhook signature');
     }
 

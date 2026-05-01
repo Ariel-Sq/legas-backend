@@ -1,6 +1,12 @@
-import { Injectable, NotFoundException, Logger, Inject } from '@nestjs/common';
+import {
+  BadRequestException,
+  Injectable,
+  NotFoundException,
+  Logger,
+  Inject,
+} from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { EntityManager, Repository } from 'typeorm';
 import { ProductVariation } from './entities/product-variation.entity';
 import { ProductImage } from './entities/product-image.entity';
 import { ProductTemplate } from './entities/product-template.entity';
@@ -314,25 +320,86 @@ export class ProductVariationsService {
     );
   }
 
+  /**
+   * Atomic stock change. A single UPDATE with a stock + delta >= 0 guard so
+   * concurrent callers can't oversell. Throws BadRequestException on negative
+   * outcome (insufficient stock); the constraint chk_stock_nonneg in the DB
+   * is the last line of defense.
+   */
   async updateStock(
     variationId: string,
     quantityChange: number,
   ): Promise<ProductVariation> {
-    const productVariation = await this.findByIdWithDetails(variationId);
+    return this.updateStockWithManager(
+      this.productsRepository.manager,
+      variationId,
+      quantityChange,
+    );
+  }
 
-    const newStock = productVariation.stock + quantityChange;
+  /**
+   * Same as updateStock but participates in the caller's transaction.
+   * Use from within dataSource.transaction(manager => ...).
+   *
+   * Uses createQueryBuilder so `result.affected` gives a reliable count,
+   * and the WHERE clause `stock + delta >= 0` makes the UPDATE itself
+   * the serialization point — concurrent transactions race on the row's
+   * implicit write-lock, and only the one that finds enough stock wins.
+   */
+  async updateStockWithManager(
+    manager: EntityManager,
+    variationId: string,
+    quantityChange: number,
+  ): Promise<ProductVariation> {
+    const result = await manager
+      .createQueryBuilder()
+      .update(ProductVariation)
+      .set({ stock: () => `stock + (${quantityChange})` })
+      .where('id = :id', { id: variationId })
+      .andWhere('stock + :delta >= 0', { delta: quantityChange })
+      .returning('*')
+      .execute();
 
-    if (newStock < 0) {
-      throw new Error(
-        `Insufficient stock for product variation ${variationId}. Available: ${productVariation.stock}, Requested: ${Math.abs(quantityChange)}`,
-      );
+    if (!result.affected || result.affected === 0) {
+      const exists = await manager.getRepository(ProductVariation).findOne({
+        where: { id: variationId },
+      });
+      if (!exists) {
+        throw new NotFoundException(
+          `ProductVariation with ID ${variationId} not found`,
+        );
+      }
+      throw new BadRequestException({
+        error: 'INSUFFICIENT_STOCK',
+        productId: variationId,
+        availableQuantity: exists.stock,
+        requestedQuantity: Math.abs(quantityChange),
+        message: `Insufficient stock for product variation ${variationId}`,
+      });
     }
+    return result.raw[0] as ProductVariation;
+  }
 
-    await this.productsRepository.update(variationId, {
-      stock: newStock,
-    });
-
-    // Return updated product variation
-    return this.findByIdWithDetails(variationId);
+  /**
+   * Lock the given variations FOR UPDATE inside an open transaction.
+   * `ids.sort()` enforces a stable lock order to prevent deadlocks across
+   * concurrent checkouts touching overlapping carts.
+   *
+   * Uses a raw SELECT to bypass eager-loaded LEFT JOINs (Postgres refuses
+   * FOR UPDATE on the nullable side of an outer join).
+   */
+  async lockVariationsForUpdate(
+    manager: EntityManager,
+    ids: string[],
+  ): Promise<{ id: string; stock: number }[]> {
+    if (ids.length === 0) return [];
+    const sorted = [...ids].sort();
+    return manager.query(
+      `SELECT id, stock FROM product_variations
+       WHERE id = ANY($1::uuid[])
+       ORDER BY id
+       FOR UPDATE`,
+      [sorted],
+    );
   }
 }

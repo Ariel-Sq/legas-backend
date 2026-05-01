@@ -1,9 +1,9 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { DataSource, EntityManager, Repository } from 'typeorm';
 import { Order, OrderStatus } from '../entities/order.entity';
 import { CheckoutItemDto } from '../dto/checkout.dto';
-import { ProductVariationsService } from '@app/products/products.service';
+import { ProductVariation } from '@app/products/entities/product-variation.entity';
 import { OrderItem } from '../entities/order-item.entity';
 import { OrderPaymentDetail } from '../entities/order-payment-detail.entity';
 import { PaymentData } from '../types/payment.types';
@@ -15,11 +15,7 @@ export class OrderService {
   constructor(
     @InjectRepository(Order)
     private readonly orderRepository: Repository<Order>,
-    @InjectRepository(OrderItem)
-    private readonly orderItemRepository: Repository<OrderItem>,
-    @InjectRepository(OrderPaymentDetail)
-    private readonly orderPaymentDetailRepository: Repository<OrderPaymentDetail>,
-    private readonly productsService: ProductVariationsService,
+    private readonly dataSource: DataSource,
   ) {}
 
   async createOrder(data: {
@@ -28,39 +24,54 @@ export class OrderService {
     items: CheckoutItemDto[];
     totalAmount: number;
   }): Promise<Order> {
-    const order = this.orderRepository.create({
+    return this.dataSource.transaction((manager) =>
+      this.createOrderInTx(manager, data),
+    );
+  }
+
+  /**
+   * Create the Order + OrderItems within an existing transaction.
+   * Uses the passed manager for ALL queries (including the product lookup)
+   * to avoid pool deadlocks: a fresh-connection lookup while N transactions
+   * each hold a connection waiting on a row lock would exhaust the pool.
+   */
+  async createOrderInTx(
+    manager: EntityManager,
+    data: {
+      userId?: string;
+      sessionId?: string;
+      items: CheckoutItemDto[];
+      totalAmount: number;
+    },
+  ): Promise<Order> {
+    const orderRepo = manager.getRepository(Order);
+    const orderItemRepo = manager.getRepository(OrderItem);
+    const productRepo = manager.getRepository(ProductVariation);
+
+    const order = orderRepo.create({
       userId: data.userId || undefined,
       sessionId: data.sessionId || undefined,
       status: OrderStatus.PENDING,
       totalAmount: data.totalAmount,
     });
+    const savedOrder = await orderRepo.save(order);
 
-    // Save the order to get its ID
-    const savedOrder = await this.orderRepository.save(order);
-
-    // Get product details and create order items
-    const orderItems = await Promise.all(
-      data.items.map(async (item) => {
-        const product = await this.productsService.findByIdWithDetails(item.id);
-        if (!product) {
-          throw new Error(`Product with id ${item.id} not found`);
-        }
-
-        const orderItem = this.orderItemRepository.create({
-          order: savedOrder,
-          productVariationId: item.id,
-          title: product.name,
-          quantity: item.quantity,
-          unitPrice: product.price,
-        });
-
-        return this.orderItemRepository.save(orderItem);
-      }),
-    );
-
-    // Attach the items to the order
+    const orderItems: OrderItem[] = [];
+    for (const item of data.items) {
+      const product = await productRepo.findOne({ where: { id: item.id } });
+      if (!product) {
+        throw new Error(`Product with id ${item.id} not found`);
+      }
+      const orderItem = orderItemRepo.create({
+        order: savedOrder,
+        productVariationId: item.id,
+        title: product.name,
+        quantity: item.quantity,
+        unitPrice: product.price,
+      });
+      orderItems.push(await orderItemRepo.save(orderItem));
+    }
     savedOrder.items = orderItems;
-
     return savedOrder;
   }
 
@@ -71,32 +82,41 @@ export class OrderService {
     });
   }
 
+  /**
+   * Idempotent payment update. The unique index on (orderId, transactionId)
+   * means the upsert is a no-op when MercadoPago retries the same webhook,
+   * so the order status and payment-detail rows can never be doubly inserted.
+   */
   async updateOrderPayment(
     order: Order,
     paymentData: PaymentData,
   ): Promise<void> {
-    // Map Mercado Pago payment status to order status
     const orderStatus = this.mapPaymentStatusToOrderStatus(paymentData.status);
 
-    // Create payment detail
-    const paymentDetail = this.orderPaymentDetailRepository.create({
-      order,
-      method: paymentData.payment_method_id,
-      status: paymentData.status,
-      statusDetail: paymentData.status_detail,
-      transactionId: paymentData.id,
+    await this.dataSource.transaction(async (manager) => {
+      const detailRepo = manager.getRepository(OrderPaymentDetail);
+      const orderRepo = manager.getRepository(Order);
+
+      // Idempotent insert keyed on (orderId, transactionId).
+      const existing = await detailRepo.findOne({
+        where: { orderId: order.id, transactionId: paymentData.id },
+      });
+      if (existing) {
+        this.logger.log(
+          `Webhook for tx ${paymentData.id} already processed — skipping`,
+        );
+        return;
+      }
+      await detailRepo.insert({
+        orderId: order.id,
+        method: paymentData.payment_method_id,
+        status: paymentData.status,
+        statusDetail: paymentData.status_detail,
+        transactionId: paymentData.id,
+      });
+
+      await orderRepo.update(order.id, { status: orderStatus });
     });
-
-    // Save payment detail
-    const savedPaymentDetail =
-      await this.orderPaymentDetailRepository.save(paymentDetail);
-
-    this.logger.log('savedPaymentDetail', savedPaymentDetail);
-
-    const updatedOrder = await this.orderRepository.update(order.id, {
-      status: orderStatus,
-    });
-    this.logger.log('updatedOrder', updatedOrder);
   }
 
   private mapPaymentStatusToOrderStatus(paymentStatus: string): OrderStatus {
