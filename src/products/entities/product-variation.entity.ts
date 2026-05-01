@@ -79,7 +79,6 @@ export class ProductVariation {
 
   @OneToMany(() => Review, (review) => review.productVariation, {
     cascade: true,
-    eager: true,
   })
   reviews: Review[];
 

@@ -31,7 +31,9 @@ import { THROTTLE_LIMIT, THROTTLE_TTL } from '@app/utils/environments';
         synchronize: false,
         migrations: ['dist/database/migrations/*.js'],
         migrationsRun: true,
-        logging: true,
+        // Verbose SQL only when LOG_SQL=1; otherwise just errors/warnings.
+        logging:
+          process.env.LOG_SQL === '1' ? 'all' : (['error', 'warn'] as const),
       }),
     }),
     // Brute force protection

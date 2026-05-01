@@ -20,11 +20,11 @@ export class Cart {
   @PrimaryGeneratedColumn('uuid')
   id: string;
 
-  @Column({ nullable: true })
-  userId: string;
+  @Column({ nullable: true, type: 'varchar' })
+  userId: string | null;
 
-  @Column({ nullable: true })
-  sessionId: string;
+  @Column({ nullable: true, type: 'varchar' })
+  sessionId: string | null;
 
   @ManyToOne(() => User, { nullable: true, onDelete: 'CASCADE' })
   @JoinColumn({ name: 'userId' })

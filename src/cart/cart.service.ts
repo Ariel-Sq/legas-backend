@@ -58,9 +58,7 @@ export class CartService {
     // Create a new cart if none exists
     if (!cart) {
       const newCart = new Cart();
-      // @ts-expect-error TODO: check this
       newCart.userId = userId || null;
-      // @ts-expect-error TODO: check this
       newCart.sessionId = sessionId || (userId ? null : uuidv4()); // Generate new sessionId if needed
       newCart.items = [];
       newCart.totalItems = 0;
