@@ -39,7 +39,7 @@ export class RatingsController {
   })
   @ApiResponse({
     status: 404,
-    description: 'Producto no encontrado o sin calificaciones',
+    description: 'Product not found or has no ratings',
   })
   async getRatingSummary(
     @Param('productVariationId') productVariationId: string,
@@ -49,7 +49,7 @@ export class RatingsController {
 
     if (!summary) {
       throw new HttpException(
-        'Producto no encontrado o sin calificaciones',
+        'Product not found or has no ratings',
         HttpStatus.NOT_FOUND,
       );
     }

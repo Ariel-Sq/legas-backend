@@ -6,6 +6,7 @@ import {
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Review, ReviewStatus } from '../entities/review.entity';
+import { ReviewsService } from './reviews.service';
 
 export interface ModerationAction {
   reviewId: string;
@@ -19,6 +20,7 @@ export class ModerationService {
   constructor(
     @InjectRepository(Review)
     private readonly reviewRepository: Repository<Review>,
+    private readonly reviewsService: ReviewsService,
   ) {}
 
   async approveReview(
@@ -31,18 +33,21 @@ export class ModerationService {
     });
 
     if (!review) {
-      throw new NotFoundException('Review no encontrado');
+      throw new NotFoundException('Review not found');
     }
 
     if (review.status === ReviewStatus.APPROVED) {
-      throw new ForbiddenException('El review ya está aprobado');
+      throw new ForbiddenException('Review is already approved');
     }
 
     review.status = ReviewStatus.APPROVED;
-    review.moderationReason = reason || 'Aprobado por moderador';
+    review.moderationReason = reason || 'Approved by moderator';
     review.moderatedBy = adminId;
 
-    return this.reviewRepository.save(review);
+    const saved = await this.reviewRepository.save(review);
+    // Approval changes the public rating — recompute summary now.
+    await this.reviewsService.recomputeRatingSummary(review.productVariationId);
+    return saved;
   }
 
   async rejectReview(
@@ -55,14 +60,16 @@ export class ModerationService {
     });
 
     if (!review) {
-      throw new NotFoundException('Review no encontrado');
+      throw new NotFoundException('Review not found');
     }
 
     review.status = ReviewStatus.REJECTED;
     review.moderationReason = reason;
     review.moderatedBy = adminId;
 
-    return this.reviewRepository.save(review);
+    const saved = await this.reviewRepository.save(review);
+    await this.reviewsService.recomputeRatingSummary(review.productVariationId);
+    return saved;
   }
 
   async hideReview(
@@ -75,14 +82,16 @@ export class ModerationService {
     });
 
     if (!review) {
-      throw new NotFoundException('Review no encontrado');
+      throw new NotFoundException('Review not found');
     }
 
     review.status = ReviewStatus.HIDDEN;
     review.moderationReason = reason;
     review.moderatedBy = adminId;
 
-    return this.reviewRepository.save(review);
+    const saved = await this.reviewRepository.save(review);
+    await this.reviewsService.recomputeRatingSummary(review.productVariationId);
+    return saved;
   }
 
   async getModerationStats(): Promise<{

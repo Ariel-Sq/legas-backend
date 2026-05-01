@@ -25,41 +25,27 @@ export class ReviewsController {
 
   @Get()
   @ApiOperation({
-    summary: 'Obtener todas las reviews',
-    description: 'Obtiene todas las reviews del sistema.',
+    summary: 'List all reviews',
+    description: 'Returns all reviews in the system.',
   })
-  @ApiResponse({
-    status: 200,
-    description: 'Lista de reviews obtenida exitosamente',
-    type: [Review],
-  })
+  @ApiResponse({ status: 200, type: [Review] })
   async findAll(): Promise<Review[]> {
     return this.reviewsService.findAll();
   }
+
   @Post()
   @UseGuards(AuthenticatedGuard)
   @ApiOperation({
-    summary: 'Crear un nuevo review',
-    description:
-      'Crea un nuevo review para un producto. Requiere autenticación por provider externo.',
+    summary: 'Create a review',
+    description: 'Create a review for a product. Requires authentication.',
   })
-  @ApiResponse({
-    status: 201,
-    description: 'Review creado exitosamente',
-    type: Review,
-  })
+  @ApiResponse({ status: 201, type: Review })
   @ApiResponse({
     status: 400,
-    description: 'Datos inválidos o usuario ya reviewó este producto',
+    description: 'Invalid data or user already reviewed this product',
   })
-  @ApiResponse({
-    status: 401,
-    description: 'Usuario no autenticado',
-  })
-  @ApiResponse({
-    status: 404,
-    description: 'Producto no encontrado',
-  })
+  @ApiResponse({ status: 401, description: 'Not authenticated' })
+  @ApiResponse({ status: 404, description: 'Product not found' })
   async create(
     @Body() createReviewDto: CreateReviewDto,
     @UserInfo() userInfo: any,
@@ -71,81 +57,52 @@ export class ReviewsController {
   @UseGuards(AuthenticatedGuard)
   @HttpCode(HttpStatus.OK)
   @ApiOperation({
-    summary: 'Marcar review como útil',
+    summary: 'Mark a review as helpful',
     description:
-      'Marca un review como útil. Requiere autenticación por provider externo.',
+      'One vote per user — duplicate votes by the same user return 409.',
   })
-  @ApiParam({
-    name: 'id',
-    description: 'ID del review',
-    example: '123e4567-e89b-12d3-a456-426614174000',
-  })
-  @ApiResponse({
-    status: 200,
-    description: 'Review marcado como útil',
-  })
-  @ApiResponse({
-    status: 401,
-    description: 'Usuario no autenticado',
-  })
-  async markAsHelpful(@Param('id') id: string): Promise<void> {
-    await this.reviewsService.markAsHelpful(id);
+  @ApiParam({ name: 'id', description: 'Review ID' })
+  @ApiResponse({ status: 200, description: 'Vote recorded' })
+  @ApiResponse({ status: 401, description: 'Not authenticated' })
+  @ApiResponse({ status: 409, description: 'Already voted' })
+  async markAsHelpful(
+    @Param('id') id: string,
+    @UserInfo() userInfo: any,
+  ): Promise<void> {
+    await this.reviewsService.markAsHelpful(id, userInfo.userId);
   }
 
   @Post(':id/report')
   @UseGuards(AuthenticatedGuard)
   @HttpCode(HttpStatus.OK)
   @ApiOperation({
-    summary: 'Reportar un review',
+    summary: 'Report a review',
     description:
-      'Reporta un review inapropiado. Requiere autenticación por provider externo.',
+      'Report a review as inappropriate. One report per user — duplicates return 409.',
   })
-  @ApiParam({
-    name: 'id',
-    description: 'ID del review a reportar',
-    example: '123e4567-e89b-12d3-a456-426614174000',
-  })
-  @ApiResponse({
-    status: 200,
-    description: 'Review reportado exitosamente',
-  })
-  @ApiResponse({
-    status: 401,
-    description: 'Usuario no autenticado',
-  })
-  async reportReview(@Param('id') id: string): Promise<void> {
-    await this.reviewsService.reportReview(id);
+  @ApiParam({ name: 'id', description: 'Review ID' })
+  @ApiResponse({ status: 200, description: 'Report recorded' })
+  @ApiResponse({ status: 401, description: 'Not authenticated' })
+  @ApiResponse({ status: 409, description: 'Already reported' })
+  async reportReview(
+    @Param('id') id: string,
+    @Body() body: { reason?: string } | undefined,
+    @UserInfo() userInfo: any,
+  ): Promise<void> {
+    await this.reviewsService.reportReview(id, userInfo.userId, body?.reason);
   }
 
   @Patch(':id')
   @UseGuards(AuthenticatedGuard)
   @ApiOperation({
-    summary: 'Actualizar un review',
-    description:
-      'Actualiza un review existente. Requiere autenticación por provider externo.',
+    summary: 'Update a review',
+    description: 'Owner-only update of a pending review.',
   })
-  @ApiParam({
-    name: 'id',
-    description: 'ID del review a actualizar',
-    example: '123e4567-e89b-12d3-a456-426614174000',
-  })
-  @ApiResponse({
-    status: 200,
-    description: 'Review actualizado exitosamente',
-    type: Review,
-  })
-  @ApiResponse({
-    status: 401,
-    description: 'Usuario no autenticado',
-  })
-  @ApiResponse({
-    status: 403,
-    description: 'No tienes permisos para editar este review',
-  })
-  @ApiResponse({
-    status: 404,
-    description: 'Review no encontrado',
-  })
+  @ApiParam({ name: 'id', description: 'Review ID' })
+  @ApiResponse({ status: 200, type: Review })
+  @ApiResponse({ status: 401, description: 'Not authenticated' })
+  @ApiResponse({ status: 403, description: 'Not the owner of the review' })
+  @ApiResponse({ status: 404, description: 'Review not found' })
   async update(
     @Param('id') id: string,
     @Body() updateReviewDto: UpdateReviewDto,
@@ -158,31 +115,14 @@ export class ReviewsController {
   @UseGuards(AuthenticatedGuard)
   @HttpCode(HttpStatus.NO_CONTENT)
   @ApiOperation({
-    summary: 'Eliminar un review',
-    description:
-      'Elimina un review existente. Requiere autenticación por provider externo.',
+    summary: 'Delete a review',
+    description: 'Owner-only review deletion.',
   })
-  @ApiParam({
-    name: 'id',
-    description: 'ID del review a eliminar',
-    example: '123e4567-e89b-12d3-a456-426614174000',
-  })
-  @ApiResponse({
-    status: 204,
-    description: 'Review eliminado exitosamente',
-  })
-  @ApiResponse({
-    status: 401,
-    description: 'Usuario no autenticado',
-  })
-  @ApiResponse({
-    status: 403,
-    description: 'No tienes permisos para eliminar este review',
-  })
-  @ApiResponse({
-    status: 404,
-    description: 'Review no encontrado',
-  })
+  @ApiParam({ name: 'id', description: 'Review ID' })
+  @ApiResponse({ status: 204, description: 'Deleted' })
+  @ApiResponse({ status: 401, description: 'Not authenticated' })
+  @ApiResponse({ status: 403, description: 'Not the owner' })
+  @ApiResponse({ status: 404, description: 'Review not found' })
   async remove(
     @Param('id') id: string,
     @UserInfo() userInfo: any,

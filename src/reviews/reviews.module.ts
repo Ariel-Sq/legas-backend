@@ -9,6 +9,8 @@ import { ModerationService } from './services/moderation.service';
 import { Review } from './entities/review.entity';
 import { ProductRatingSummary } from './entities/product-rating-summary.entity';
 import { ReviewImage } from './entities/review-image.entity';
+import { ReviewHelpfulVote } from './entities/review-helpful-vote.entity';
+import { ReviewReport } from './entities/review-report.entity';
 import { User } from '../users/entities/user.entity';
 import { ProductVariation } from '../products/entities/product-variation.entity';
 import { Order } from '../payments/entities/order.entity';
@@ -21,6 +23,8 @@ import { AdminGuard } from '@app/auth/guards/admin.guard';
       Review,
       ProductRatingSummary,
       ReviewImage,
+      ReviewHelpfulVote,
+      ReviewReport,
       User,
       ProductVariation,
       Order,

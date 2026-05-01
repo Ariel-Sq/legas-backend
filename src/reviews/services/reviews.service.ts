@@ -2,16 +2,19 @@ import {
   Injectable,
   NotFoundException,
   BadRequestException,
+  ConflictException,
   ForbiddenException,
   Inject,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { QueryFailedError, Repository } from 'typeorm';
 import { CACHE_MANAGER } from '@nestjs/cache-manager';
 import type { Cache } from 'cache-manager';
 import { Review, ReviewStatus } from '../entities/review.entity';
 import { ProductRatingSummary } from '../entities/product-rating-summary.entity';
 import { ReviewImage } from '../entities/review-image.entity';
+import { ReviewHelpfulVote } from '../entities/review-helpful-vote.entity';
+import { ReviewReport } from '../entities/review-report.entity';
 import { User } from '../../users/entities/user.entity';
 import { ProductVariation } from '../../products/entities/product-variation.entity';
 import { Order } from '../../payments/entities/order.entity';
@@ -34,6 +37,10 @@ export class ReviewsService {
     private readonly productVariationRepository: Repository<ProductVariation>,
     @InjectRepository(Order)
     private readonly orderRepository: Repository<Order>,
+    @InjectRepository(ReviewHelpfulVote)
+    private readonly helpfulVoteRepository: Repository<ReviewHelpfulVote>,
+    @InjectRepository(ReviewReport)
+    private readonly reportRepository: Repository<ReviewReport>,
     @Inject(CACHE_MANAGER)
     private readonly cacheManager: Cache,
   ) {}
@@ -42,37 +49,28 @@ export class ReviewsService {
     createReviewDto: CreateReviewDto,
     userId: string,
   ): Promise<Review> {
-    // Verificar que el producto existe
     const productVariation = await this.productVariationRepository.findOne({
       where: { id: createReviewDto.productVariationId },
     });
-
     if (!productVariation) {
-      throw new NotFoundException('Producto no encontrado');
+      throw new NotFoundException('Product not found');
     }
 
-    // Verificar que el usuario existe
-    const user = await this.userRepository.findOne({
-      where: { id: userId },
-    });
-
+    const user = await this.userRepository.findOne({ where: { id: userId } });
     if (!user) {
-      throw new NotFoundException('Usuario no encontrado');
+      throw new NotFoundException('User not found');
     }
 
-    // Verificar que el usuario no haya reviewado este producto antes
     const existingReview = await this.reviewRepository.findOne({
       where: {
         userId,
         productVariationId: createReviewDto.productVariationId,
       },
     });
-
     if (existingReview) {
-      throw new BadRequestException('Ya has reviewado este producto');
+      throw new BadRequestException('You have already reviewed this product');
     }
 
-    // Verificar compra si se marca como verified purchase
     let isVerifiedPurchase = false;
     let orderId = null;
 
@@ -93,7 +91,6 @@ export class ReviewsService {
       }
     }
 
-    // Crear el review
     const reviewData: Partial<Review> = {
       userId,
       productVariationId: createReviewDto.productVariationId,
@@ -101,7 +98,7 @@ export class ReviewsService {
       content: createReviewDto.content,
       rating: createReviewDto.rating,
       isVerifiedPurchase,
-      status: ReviewStatus.PENDING, // Todos los reviews empiezan pendientes
+      status: ReviewStatus.PENDING,
     };
 
     if (orderId) {
@@ -111,7 +108,6 @@ export class ReviewsService {
     const review = this.reviewRepository.create(reviewData);
     const savedReview = await this.reviewRepository.save(review);
 
-    // Crear imágenes si se proporcionaron
     if (createReviewDto.images && createReviewDto.images.length > 0) {
       const reviewImages = createReviewDto.images.map((imageUrl, index) =>
         this.reviewImageRepository.create({
@@ -123,7 +119,6 @@ export class ReviewsService {
       await this.reviewImageRepository.save(reviewImages);
     }
 
-    // Invalidar caché de ratings
     await this.invalidateRatingCache(createReviewDto.productVariationId);
 
     return this.findById(savedReview.id);
@@ -136,7 +131,7 @@ export class ReviewsService {
     });
 
     if (!review) {
-      throw new NotFoundException('Review no encontrado');
+      throw new NotFoundException('Review not found');
     }
 
     return review;
@@ -161,14 +156,12 @@ export class ReviewsService {
         productVariationId,
       });
 
-    // Si no se especifica incluir todos, filtrar solo aprobados
     if (!queryDto.includeAll) {
       queryBuilder.andWhere('review.status = :status', {
         status: ReviewStatus.APPROVED,
       });
     }
 
-    // Aplicar filtros
     if (queryDto.verifiedOnly) {
       queryBuilder.andWhere('review.isVerifiedPurchase = :verified', {
         verified: true,
@@ -188,7 +181,6 @@ export class ReviewsService {
       );
     }
 
-    // Aplicar ordenamiento
     const sortBy = queryDto.sortBy || 'createdAt';
     const sortOrder = queryDto.sortOrder || 'desc';
     queryBuilder.orderBy(
@@ -196,7 +188,6 @@ export class ReviewsService {
       sortOrder.toUpperCase() as 'ASC' | 'DESC',
     );
 
-    // Aplicar paginación
     const page = queryDto.page || 1;
     const limit = queryDto.limit || 10;
     const skip = (page - 1) * limit;
@@ -215,21 +206,17 @@ export class ReviewsService {
   ): Promise<Review> {
     const review = await this.findById(id);
 
-    // Verificar que el usuario sea el dueño del review
     if (review.userId !== userId) {
-      throw new ForbiddenException('No puedes editar este review');
+      throw new ForbiddenException('You cannot edit this review');
     }
 
-    // Verificar que el review no esté aprobado aún (solo se pueden editar reviews pendientes)
     if (review.status === ReviewStatus.APPROVED) {
-      throw new BadRequestException('No puedes editar un review ya aprobado');
+      throw new BadRequestException('Cannot edit an already-approved review');
     }
 
-    // Actualizar el review
     Object.assign(review, updateReviewDto);
     const savedReview = await this.reviewRepository.save(review);
 
-    // Invalidar caché de ratings
     await this.invalidateRatingCache(review.productVariationId);
 
     return this.findById(savedReview.id);
@@ -238,38 +225,72 @@ export class ReviewsService {
   async remove(id: string, userId: string): Promise<void> {
     const review = await this.findById(id);
 
-    // Verificar que el usuario sea el dueño del review o admin
     if (review.userId !== userId) {
-      throw new ForbiddenException('No puedes eliminar este review');
+      throw new ForbiddenException('You cannot delete this review');
     }
 
     await this.reviewRepository.remove(review);
 
-    // Invalidar caché de ratings
     await this.invalidateRatingCache(review.productVariationId);
   }
 
-  async markAsHelpful(reviewId: string): Promise<void> {
+  /**
+   * Idempotent helpful vote. Inserting a duplicate (reviewId, userId) hits
+   * the PK constraint — we map that to a 409. The on-disk count is then
+   * derived from a COUNT() so it can never drift from the truth.
+   */
+  async markAsHelpful(reviewId: string, userId: string): Promise<void> {
     const review = await this.findById(reviewId);
 
-    // TODO: Implementar lógica para marcar como útil
-    // Esto requeriría una tabla adicional para votos de utilidad
-    // userId se usaría para evitar votos duplicados del mismo usuario
+    try {
+      await this.helpfulVoteRepository.insert({
+        reviewId: review.id,
+        userId,
+      });
+    } catch (e) {
+      if (e instanceof QueryFailedError && (e as any).code === '23505') {
+        throw new ConflictException('You already marked this review helpful');
+      }
+      throw e;
+    }
 
-    review.helpfulVotes += 1;
-    await this.reviewRepository.save(review);
+    const total = await this.helpfulVoteRepository.count({
+      where: { reviewId: review.id },
+    });
+    await this.reviewRepository.update(review.id, { helpfulVotes: total });
   }
 
-  async reportReview(reviewId: string): Promise<void> {
+  /**
+   * Idempotent report. First report flags the review; subsequent ones from
+   * the same user are 409s. Total report count is also a derived COUNT().
+   */
+  async reportReview(
+    reviewId: string,
+    userId: string,
+    reason?: string,
+  ): Promise<void> {
     const review = await this.findById(reviewId);
 
-    review.reportCount += 1;
-    review.status = ReviewStatus.FLAGGED;
+    try {
+      await this.reportRepository.insert({
+        reviewId: review.id,
+        userId,
+        reason: reason ?? null,
+      });
+    } catch (e) {
+      if (e instanceof QueryFailedError && (e as any).code === '23505') {
+        throw new ConflictException('You already reported this review');
+      }
+      throw e;
+    }
 
-    await this.reviewRepository.save(review);
-
-    // TODO: Notificar a administradores sobre review reportado
-    // TODO: Usar reason para categorizar el reporte
+    const total = await this.reportRepository.count({
+      where: { reviewId: review.id },
+    });
+    await this.reviewRepository.update(review.id, {
+      reportCount: total,
+      status: ReviewStatus.FLAGGED,
+    });
   }
 
   private async invalidateRatingCache(
@@ -283,6 +304,14 @@ export class ReviewsService {
     for (const key of cacheKeys) {
       await this.cacheManager.del(key);
     }
+  }
+
+  /**
+   * Public hook so moderation can force a recompute after approve/reject/hide.
+   */
+  async recomputeRatingSummary(productVariationId: string): Promise<void> {
+    await this.invalidateRatingCache(productVariationId);
+    await this.calculateAndCacheRatingSummary(productVariationId);
   }
 
   async getCachedRatingSummary(
@@ -301,7 +330,6 @@ export class ReviewsService {
   private async calculateAndCacheRatingSummary(
     productVariationId: string,
   ): Promise<ProductRatingSummary | null> {
-    // Calcular estadísticas reales desde la base de datos
     const result = await this.reviewRepository
       .createQueryBuilder('review')
       .select([
@@ -331,7 +359,6 @@ export class ReviewsService {
       return null;
     }
 
-    // Verificar si ya existe un resumen para este producto
     const existingSummary = await this.ratingSummaryRepository.findOne({
       where: { productVariationId },
     });
@@ -339,7 +366,6 @@ export class ReviewsService {
     let summary: ProductRatingSummary;
 
     if (existingSummary) {
-      // Actualizar el resumen existente
       Object.assign(existingSummary, {
         averageRating: parseFloat(result.average) || 0,
         totalReviews: parseInt(result.total),
@@ -350,7 +376,6 @@ export class ReviewsService {
       });
       summary = await this.ratingSummaryRepository.save(existingSummary);
     } else {
-      // Crear nuevo resumen
       summary = this.ratingSummaryRepository.create({
         productVariationId,
         averageRating: parseFloat(result.average) || 0,
@@ -363,7 +388,6 @@ export class ReviewsService {
       summary = await this.ratingSummaryRepository.save(summary);
     }
 
-    // Cachear por 1 hora
     const cacheKey = `rating:product:${productVariationId}`;
     await this.cacheManager.set(cacheKey, summary, 3600);
 
