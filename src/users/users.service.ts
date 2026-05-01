@@ -2,6 +2,7 @@ import {
   Injectable,
   NotFoundException,
   ConflictException,
+  BadRequestException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
@@ -56,7 +57,9 @@ export class UsersService {
       !createUserDto.authProvider
     ) {
       if (!createUserDto.password) {
-        throw new Error('Password is required for local authentication');
+        throw new BadRequestException(
+          'Password is required for local authentication',
+        );
       }
     }
 

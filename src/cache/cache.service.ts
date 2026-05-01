@@ -119,12 +119,18 @@ export class CacheService {
    * @returns A hashed string to use as a cache key
    */
   private generateCacheKey(url: string): string {
-    // Extract the file path from signed URLs to avoid cache misses due to token expiration
-    // For Supabase signed URLs, the path is before the token parameter
-    const urlObj = new URL(url);
-    const pathWithoutToken =
-      urlObj.pathname + (urlObj.searchParams.get('token') ? '' : urlObj.search);
-    return crypto.createHash('md5').update(pathWithoutToken).digest('hex');
+    // For Supabase signed URLs, drop the token query param so cache survives token rotation.
+    // For non-URL strings (e.g. local-storage placeholders) hash the raw value.
+    let keyInput = url;
+    try {
+      const urlObj = new URL(url);
+      keyInput =
+        urlObj.pathname +
+        (urlObj.searchParams.get('token') ? '' : urlObj.search);
+    } catch {
+      // not a parseable URL — fall back to the raw string
+    }
+    return crypto.createHash('md5').update(keyInput).digest('hex');
   }
 
   /**

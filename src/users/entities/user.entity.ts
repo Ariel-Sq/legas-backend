@@ -7,6 +7,7 @@ import {
   BeforeInsert,
   BeforeUpdate,
 } from 'typeorm';
+import { Exclude } from 'class-transformer';
 import * as bcrypt from 'bcrypt';
 
 export enum UserRole {
@@ -38,6 +39,7 @@ export class User {
   lastName: string;
 
   @Column({ type: 'varchar', nullable: true, select: false }) // 'select: false' prevents password from being selected by default
+  @Exclude({ toPlainOnly: true })
   password: string;
 
   @Column({
@@ -58,12 +60,15 @@ export class User {
   isEmailVerified: boolean;
 
   @Column({ type: 'varchar', nullable: true })
+  @Exclude({ toPlainOnly: true })
   verificationToken: string;
 
   @Column({ type: 'varchar', nullable: true })
+  @Exclude({ toPlainOnly: true })
   resetPasswordToken: string;
 
   @Column({ type: 'timestamp', nullable: true })
+  @Exclude({ toPlainOnly: true })
   resetPasswordExpires: Date;
 
   @Column({ type: 'varchar', nullable: true })

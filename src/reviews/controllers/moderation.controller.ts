@@ -14,11 +14,15 @@ import {
   ApiOperation,
   ApiResponse,
   ApiParam,
-  ApiBody,
 } from '@nestjs/swagger';
 import { ModerationService } from '../services/moderation.service';
 import { Review } from '../entities/review.entity';
 import { AdminGuard } from '../../auth/guards/admin.guard';
+import {
+  ApproveReviewDto,
+  HideReviewDto,
+  RejectReviewDto,
+} from '../dto/moderation.dto';
 
 @ApiTags('Moderation')
 @Controller('admin/reviews')
@@ -62,19 +66,6 @@ export class ModerationController {
     description: 'ID del review a aprobar',
     example: '123e4567-e89b-12d3-a456-426614174000',
   })
-  @ApiBody({
-    schema: {
-      type: 'object',
-      properties: {
-        reason: {
-          type: 'string',
-          description: 'Razón opcional para la aprobación',
-          example: 'Contenido apropiado y útil',
-        },
-      },
-      required: [],
-    },
-  })
   @ApiResponse({
     status: 200,
     description: 'Review aprobado exitosamente',
@@ -86,10 +77,10 @@ export class ModerationController {
   })
   async approveReview(
     @Param('id') id: string,
-    @Body() body: { reason?: string },
+    @Body() body: ApproveReviewDto = {},
     @Request() req: any,
   ): Promise<Review> {
-    return this.moderationService.approveReview(id, req.user.id, body.reason);
+    return this.moderationService.approveReview(id, req.user.id, body?.reason);
   }
 
   @Post(':id/reject')
@@ -103,19 +94,6 @@ export class ModerationController {
     description: 'ID del review a rechazar',
     example: '123e4567-e89b-12d3-a456-426614174000',
   })
-  @ApiBody({
-    schema: {
-      type: 'object',
-      properties: {
-        reason: {
-          type: 'string',
-          description: 'Razón requerida para el rechazo',
-          example: 'Contenido inapropiado o spam',
-        },
-      },
-      required: ['reason'],
-    },
-  })
   @ApiResponse({
     status: 200,
     description: 'Review rechazado exitosamente',
@@ -127,7 +105,7 @@ export class ModerationController {
   })
   async rejectReview(
     @Param('id') id: string,
-    @Body() body: { reason: string },
+    @Body() body: RejectReviewDto,
     @Request() req: any,
   ): Promise<Review> {
     return this.moderationService.rejectReview(id, req.user.id, body.reason);
@@ -145,19 +123,6 @@ export class ModerationController {
     description: 'ID del review a ocultar',
     example: '123e4567-e89b-12d3-a456-426614174000',
   })
-  @ApiBody({
-    schema: {
-      type: 'object',
-      properties: {
-        reason: {
-          type: 'string',
-          description: 'Razón requerida para ocultar el review',
-          example: 'Violación de políticas de contenido',
-        },
-      },
-      required: ['reason'],
-    },
-  })
   @ApiResponse({
     status: 200,
     description: 'Review ocultado exitosamente',
@@ -169,7 +134,7 @@ export class ModerationController {
   })
   async hideReview(
     @Param('id') id: string,
-    @Body() body: { reason: string },
+    @Body() body: HideReviewDto,
     @Request() req: any,
   ): Promise<Review> {
     return this.moderationService.hideReview(id, req.user.id, body.reason);

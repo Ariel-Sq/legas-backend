@@ -1,6 +1,6 @@
-import { NestFactory } from '@nestjs/core';
+import { NestFactory, Reflector } from '@nestjs/core';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
-import { ValidationPipe } from '@nestjs/common';
+import { ClassSerializerInterceptor, ValidationPipe } from '@nestjs/common';
 import { AppModule } from '@app/app.module';
 import { PORT } from '@app/utils/environments';
 import { AuthMiddleware } from '@app/auth/middleware/auth.middleware';
@@ -26,6 +26,11 @@ async function bootstrap() {
       forbidNonWhitelisted: true, // Throw error if disallowed properties are present
       transform: true, // Automatically transform types
     }),
+  );
+
+  // Strip @Exclude()-marked fields from responses (e.g. user.password, tokens)
+  app.useGlobalInterceptors(
+    new ClassSerializerInterceptor(app.get(Reflector)),
   );
 
   // Apply global exception filter
