@@ -65,7 +65,7 @@ Swagger is at `/api/docs` (JSON at `/api/docs-json`), with `x-user-id` registere
 
 Controllers consume this through the `@UserInfo()` param decorator (`src/auth/decorators/user-info.decorator.ts`), which returns `{ userId?, sessionId?, isAuthenticated, isAnonymous }`. **Never read `x-user-id` or session cookies directly in controllers** — use the decorator so the abstraction holds.
 
-`AdminGuard` (`src/auth/guards/admin.guard.ts`) currently only enforces `isAuthenticated` — the actual role check is a TODO (see comments). `AuthenticatedGuard` is the lighter "must be logged in" check. No JWT issuance lives here.
+`AdminGuard` (`src/auth/guards/admin.guard.ts`) enforces `isAuthenticated` and then loads the user from the DB to check `role === OWNER || ADMIN` (403 otherwise). `AuthenticatedGuard` is the lighter "must be logged in" check. No JWT issuance lives here.
 
 ### Cart / session continuity
 
