@@ -1,6 +1,7 @@
-import { Controller, Get } from '@nestjs/common';
+import { Controller, Get, Query } from '@nestjs/common';
 import { ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { ProductTemplatesService } from '../services/product-templates.service';
+import { ListProductTemplatesQueryDto } from '../dto/list-product-templates-query.dto';
 
 /**
  * Public read-only template controller. CUD lives in AdminProductTemplatesController.
@@ -18,7 +19,7 @@ export class ProductTemplatesController {
     status: 200,
     description: 'Product templates retrieved successfully',
   })
-  findAll() {
-    return this.productTemplatesService.findAll();
+  findAll(@Query() query: ListProductTemplatesQueryDto) {
+    return this.productTemplatesService.findAll(query);
   }
 }

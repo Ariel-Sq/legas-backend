@@ -15,6 +15,7 @@ import { ProductVariation } from './product-variation.entity';
 @Entity('product_templates')
 @Index(['is_active'])
 @Index(['slug'])
+@Index(['is_featured'])
 export class ProductTemplate {
   @PrimaryGeneratedColumn('uuid')
   id: string;
@@ -47,6 +48,9 @@ export class ProductTemplate {
 
   @Column({ type: 'boolean', default: true })
   is_active: boolean;
+
+  @Column({ type: 'boolean', default: false })
+  is_featured: boolean;
 
   @OneToMany(() => ProductVariation, (variation) => variation.template, {
     cascade: true,

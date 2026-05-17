@@ -11,6 +11,11 @@ import { ProductVariation } from '../entities/product-variation.entity';
 import { Category } from '../../categories/entities/category.entity';
 import { CreateProductTemplateDto } from '../dto/create-product-template.dto';
 import { UpdateProductTemplateDto } from '../dto/update-product-template.dto';
+import {
+  ListProductTemplatesQueryDto,
+  ProductTemplateSortField,
+  SortOrder,
+} from '../dto/list-product-templates-query.dto';
 import { BACKEND_URL } from '@app/utils/environments';
 
 @Injectable()
@@ -26,7 +31,14 @@ export class ProductTemplatesService {
     private categoriesRepository: Repository<Category>,
   ) {}
 
-  async findAll(): Promise<ProductTemplate[]> {
+  async findAll(
+    query: ListProductTemplatesQueryDto = {},
+  ): Promise<ProductTemplate[]> {
+    const sortField = query.sort ?? ProductTemplateSortField.NAME;
+    const sortOrder = (query.order ?? SortOrder.ASC).toUpperCase() as
+      | 'ASC'
+      | 'DESC';
+
     const res = await this.productTemplatesRepository.find({
       relations: [
         'categories',
@@ -35,7 +47,11 @@ export class ProductTemplatesService {
         'variations.reviews',
         'variations.reviews.user',
       ],
-      order: { name: 'ASC' },
+      ...(query.featured !== undefined
+        ? { where: { is_featured: query.featured } }
+        : {}),
+      order: { [sortField]: sortOrder },
+      ...(query.limit ? { take: query.limit } : {}),
     });
 
     // Transform image URLs to full URLs

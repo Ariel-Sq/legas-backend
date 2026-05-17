@@ -69,4 +69,13 @@ export class CreateProductTemplateDto {
   @IsOptional()
   @IsBoolean()
   is_active?: boolean;
+
+  @ApiPropertyOptional({
+    description: 'Whether the template is featured on the home page',
+    example: false,
+    default: false,
+  })
+  @IsOptional()
+  @IsBoolean()
+  is_featured?: boolean;
 }
