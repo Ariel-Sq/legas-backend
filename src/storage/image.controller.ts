@@ -39,7 +39,7 @@ export class ImageController {
     status: 200,
     description: 'Image file returned successfully',
   })
-  async getImage(@Query('path') path: string, @Res() res: any) {
+  async getImage(@Query('path') path: string, @Res() res: any): Promise<void> {
     const url = await this.storageService.getSignedUrl(path);
     let imageBuffer: Buffer<ArrayBufferLike> | null;
     if (url.startsWith(LOCAL_STORAGE)) {
@@ -53,10 +53,15 @@ export class ImageController {
       throw new BadRequestException('Image not found or could not be loaded');
     }
 
+    const contentType =
+      path.toLowerCase().endsWith('.png') ? 'image/png'
+      : path.toLowerCase().endsWith('.webp') ? 'image/webp'
+      : path.toLowerCase().endsWith('.gif') ? 'image/gif'
+      : 'image/jpeg';
     res.set({
-      'Content-Type': 'image/jpeg',
+      'Content-Type': contentType,
       'Cache-Control': 'public, max-age=3600',
     });
-    return res.send(imageBuffer);
+    res.send(imageBuffer);
   }
 }
