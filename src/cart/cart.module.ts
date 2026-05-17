@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { CartController } from './cart.controller';
+import { AdminCartController } from './admin-cart.controller';
 import { CartService } from './cart.service';
 import { Cart } from './entities/cart.entity';
 import { CartItem } from './entities/cart-item.entity';
@@ -18,7 +19,7 @@ import { AdminGuard } from '@app/auth/guards/admin.guard';
     ProductsModule,
     UsersModule,
   ],
-  controllers: [CartController],
+  controllers: [CartController, AdminCartController],
   providers: [CartService, AdminGuard],
   exports: [CartService],
 })
