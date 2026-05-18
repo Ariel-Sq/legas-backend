@@ -33,6 +33,17 @@ This document outlines planned enhancements and features for the Ecommerce backe
 
 ## Nice to have
 
+### Housekeeping
+
+- [ ] Scheduled job to delete orphan anonymous carts. When an anon user
+      logs in, `getOrCreateCart` switches to looking up by `userId`, so
+      the old `sessionId`-keyed cart and its items stay in the DB
+      untouched. A periodic job (`@nestjs/schedule`, daily) should drop
+      carts where `userId IS NULL AND updatedAt < now() - INTERVAL '30 days'`
+      (or whatever the session cookie maxAge is) plus their cart_items.
+      Optional: also clear the sessionId cookie on logout so a returning
+      anon doesn't resurrect the abandoned cart.
+
 ## Images review
 
 - [ ] Add support to upload images in review endpoints
