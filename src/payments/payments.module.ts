@@ -1,6 +1,7 @@
 import { Module, NestModule, MiddlewareConsumer } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { PaymentsController } from './payments.controller';
+import { OrdersController } from './orders.controller';
 import { PaymentsService } from './payments.service';
 import { ProductsModule } from '@app/products/products.module';
 import { UsersModule } from '@app/users/users.module';
@@ -18,7 +19,7 @@ import { OrderPaymentDetail } from './entities/order-payment-detail.entity';
     UsersModule,
     CartModule,
   ],
-  controllers: [PaymentsController],
+  controllers: [PaymentsController, OrdersController],
   providers: [PaymentsService, OrderService],
   exports: [OrderService, TypeOrmModule],
 })

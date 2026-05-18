@@ -83,6 +83,36 @@ export class OrderService {
   }
 
   /**
+   * List the orders for the current shopper. Auth users get them by userId;
+   * anon shoppers get them by the sessionId cookie. Returns [] when neither
+   * is present.
+   */
+  async findForCustomer(
+    userId?: string,
+    sessionId?: string,
+  ): Promise<Order[]> {
+    if (!userId && !sessionId) return [];
+    // Use the query builder instead of `find({ where })` because the where
+    // shorthand was tripping Postgres' `uuid = character varying` check when
+    // filtering by sessionId (a varchar column) alongside the userId uuid
+    // relation. Parameterising the comparison directly keeps both branches
+    // explicit and type-safe.
+    const qb = this.orderRepository
+      .createQueryBuilder('order')
+      .leftJoinAndSelect('order.items', 'item')
+      .leftJoinAndSelect('item.productVariation', 'variation')
+      .leftJoinAndSelect('variation.images', 'image')
+      .leftJoinAndSelect('order.paymentDetails', 'paymentDetail')
+      .orderBy('order.createdAt', 'DESC');
+    if (userId) {
+      qb.where('order.userId = :userId', { userId });
+    } else {
+      qb.where('order.sessionId = :sessionId', { sessionId });
+    }
+    return qb.getMany();
+  }
+
+  /**
    * Idempotent payment update. The unique index on (orderId, transactionId)
    * means the upsert is a no-op when MercadoPago retries the same webhook,
    * so the order status and payment-detail rows can never be doubly inserted.
