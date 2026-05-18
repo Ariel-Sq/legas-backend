@@ -85,6 +85,31 @@ export class UsersService {
     return this.usersRepository.save(user);
   }
 
+  /**
+   * Provision a user that signed in through an OAuth provider. No password
+   * column is set; `authProvider` is whatever the caller provides (google,
+   * facebook, …). If the email is already known, returns the existing user
+   * untouched so the OAuth callback is idempotent.
+   */
+  async createOrFindOAuthUser(dto: {
+    email: string;
+    firstName: string;
+    lastName: string;
+    authProvider: User['authProvider'];
+  }): Promise<User> {
+    const existing = await this.findByEmail(dto.email);
+    if (existing) return existing;
+
+    const user = this.usersRepository.create({
+      email: dto.email,
+      firstName: dto.firstName,
+      lastName: dto.lastName,
+      authProvider: dto.authProvider,
+      isEmailVerified: true,
+    });
+    return this.usersRepository.save(user);
+  }
+
   async update(id: string, updateUserDto: UpdateUserDto): Promise<User> {
     const user = await this.findById(id);
 
