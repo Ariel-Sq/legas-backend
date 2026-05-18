@@ -7,7 +7,7 @@ import {
   Inject,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { QueryFailedError, Repository } from 'typeorm';
+import { In, QueryFailedError, Repository } from 'typeorm';
 import { CACHE_MANAGER } from '@nestjs/cache-manager';
 import type { Cache } from 'cache-manager';
 import { Review, ReviewStatus } from '../entities/review.entity';
@@ -137,11 +137,25 @@ export class ReviewsService {
     return review;
   }
 
-  async findAll(): Promise<Review[]> {
-    return this.reviewRepository.find({
+  async findAll(viewerUserId?: string): Promise<Review[]> {
+    const reviews = await this.reviewRepository.find({
       relations: ['user', 'productVariation', 'images'],
       order: { createdAt: 'DESC' },
     });
+    if (viewerUserId && reviews.length > 0) {
+      const votes = await this.helpfulVoteRepository.find({
+        where: {
+          userId: viewerUserId,
+          reviewId: In(reviews.map((r) => r.id)),
+        },
+        select: ['reviewId'],
+      });
+      const votedSet = new Set(votes.map((v) => v.reviewId));
+      reviews.forEach((r) => {
+        (r as Review & { votedByMe: boolean }).votedByMe = votedSet.has(r.id);
+      });
+    }
+    return reviews;
   }
 
   async findByProductVariationId(
@@ -254,6 +268,22 @@ export class ReviewsService {
       throw e;
     }
 
+    const total = await this.helpfulVoteRepository.count({
+      where: { reviewId: review.id },
+    });
+    await this.reviewRepository.update(review.id, { helpfulVotes: total });
+  }
+
+  /**
+   * Removes a user's helpful vote. Idempotent — if the vote didn't exist,
+   * the recount is still run so the row stays consistent.
+   */
+  async removeHelpfulVote(reviewId: string, userId: string): Promise<void> {
+    const review = await this.findById(reviewId);
+    await this.helpfulVoteRepository.delete({
+      reviewId: review.id,
+      userId,
+    });
     const total = await this.helpfulVoteRepository.count({
       where: { reviewId: review.id },
     });

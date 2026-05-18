@@ -26,11 +26,12 @@ export class ReviewsController {
   @Get()
   @ApiOperation({
     summary: 'List all reviews',
-    description: 'Returns all reviews in the system.',
+    description:
+      'Returns all reviews in the system. When the request carries x-user-id, each review includes votedByMe.',
   })
   @ApiResponse({ status: 200, type: [Review] })
-  async findAll(): Promise<Review[]> {
-    return this.reviewsService.findAll();
+  async findAll(@UserInfo() userInfo: any): Promise<Review[]> {
+    return this.reviewsService.findAll(userInfo.userId);
   }
 
   @Post()
@@ -70,6 +71,24 @@ export class ReviewsController {
     @UserInfo() userInfo: any,
   ): Promise<void> {
     await this.reviewsService.markAsHelpful(id, userInfo.userId);
+  }
+
+  @Delete(':id/helpful')
+  @UseGuards(AuthenticatedGuard)
+  @HttpCode(HttpStatus.NO_CONTENT)
+  @ApiOperation({
+    summary: 'Remove the current user vote on a review',
+    description:
+      'Idempotent — if the user had not voted, the response is still 204 and the stored count is recomputed.',
+  })
+  @ApiParam({ name: 'id', description: 'Review ID' })
+  @ApiResponse({ status: 204, description: 'Vote removed' })
+  @ApiResponse({ status: 401, description: 'Not authenticated' })
+  async removeHelpfulVote(
+    @Param('id') id: string,
+    @UserInfo() userInfo: any,
+  ): Promise<void> {
+    await this.reviewsService.removeHelpfulVote(id, userInfo.userId);
   }
 
   @Post(':id/report')
