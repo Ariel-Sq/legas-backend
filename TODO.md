@@ -44,6 +44,29 @@ This document outlines planned enhancements and features for the Ecommerce backe
       Optional: also clear the sessionId cookie on logout so a returning
       anon doesn't resurrect the abandoned cart.
 
+### Wishlist module (per-user, replaces localStorage-only)
+
+- [ ] The frontend currently stores favorites in `localStorage` under
+      `ltecdeco-wishlist`, so the list is tied to the browser, not to
+      the user. Two devices for the same user don't share, and shared
+      browsers cross-contaminate.
+- [ ] Build a thin backend module:
+      - Migration `CreateWishlistItemsTable` → `wishlist_items` with
+        `id uuid`, `user_id uuid FK users ON DELETE CASCADE`,
+        `product_variation_id uuid FK product_variations ON DELETE CASCADE`,
+        `created_at timestamptz default now()`, and a unique index on
+        `(user_id, product_variation_id)`.
+      - Entity `WishlistItem` with `@ManyToOne` to `User` and
+        `ProductVariation`.
+      - `WishlistModule` + `WishlistService` + `WishlistController`
+        guarded by `AuthenticatedGuard`:
+          - `GET    /api/wishlist`                   → list for the user
+          - `POST   /api/wishlist { variationId }`   → idempotent insert
+          - `DELETE /api/wishlist/:variationId`      → remove
+- [ ] Frontend: keep `localStorage` only while the user is anonymous;
+      on login, sync the local items up (one POST per item, ignore
+      409 conflicts) and from then on read/write through the API.
+
 ## Images review
 
 - [ ] Add support to upload images in review endpoints
