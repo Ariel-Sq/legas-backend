@@ -1,27 +1,31 @@
 import {
   IsString,
-  IsNumber,
   IsBoolean,
   IsObject,
   IsDateString,
   IsOptional,
 } from 'class-validator';
+import { Transform } from 'class-transformer';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
 /**
- * MercadoPago does not commit to consistent types in webhook payloads:
- * - `id` is a numeric string in test events but documented as either
- *   string or number depending on event type.
- * - `application_id` is omitted in some test events.
- * - `user_id` can be a number (live) or a numeric string (some tests).
- * Validations below were loosened to match what the upstream actually
- * sends, instead of what the docs claim.
+ * MercadoPago doesn't commit to consistent types in webhook payloads:
+ * - top-level `id`, `application_id`, `user_id` can each arrive as a number
+ *   or as a numeric string depending on the event type and origin.
+ * - `application_id` is missing on some test events.
+ *
+ * The fields below are coerced to strings via @Transform so a single
+ * validator suffices and downstream code reads a stable type.
  */
+const toStringIfPresent = ({ value }: { value: unknown }) =>
+  value == null ? value : String(value);
+
 export class WebhookNotificationDto {
   @ApiProperty({
     description: 'The ID of the notification',
     example: '1234567890',
   })
+  @Transform(toStringIfPresent)
   @IsString()
   id: string;
 
@@ -33,7 +37,7 @@ export class WebhookNotificationDto {
   live_mode: boolean;
 
   @ApiProperty({
-    description: 'The type of notification (e.g., payment, subscription, etc.)',
+    description: 'The type of notification (payment, test, subscription, ...)',
     example: 'payment',
   })
   @IsString()
@@ -47,19 +51,21 @@ export class WebhookNotificationDto {
   date_created: string;
 
   @ApiPropertyOptional({
-    description: 'The application ID (omitted by MP test events)',
-    example: 123456789012345,
+    description: 'The application ID (omitted by some MP test events)',
+    example: '123456789012345',
   })
   @IsOptional()
-  @IsNumber()
-  application_id?: number;
+  @Transform(toStringIfPresent)
+  @IsString()
+  application_id?: string;
 
   @ApiProperty({
     description: 'The user ID',
-    example: 123456789,
+    example: '123456789',
   })
-  @IsNumber()
-  user_id: number;
+  @Transform(toStringIfPresent)
+  @IsString()
+  user_id: string;
 
   @ApiProperty({
     description: 'The version of the API',
