@@ -214,7 +214,25 @@ export class PaymentsService {
   private async handlePaymentNotification(paymentId: string | number) {
     try {
       const payment = new Payment(this.client);
-      const response = await payment.get({ id: paymentId.toString() });
+      let response;
+      try {
+        response = await payment.get({ id: paymentId.toString() });
+      } catch (e: any) {
+        // MercadoPago answers 404 for two practical cases: the dashboard
+        // "Simulate notification" sends payment_id=123456 which never exists,
+        // and any stale id we get re-notified about after the payment was
+        // wiped on MP's side. Neither is a retriable error — ack with success
+        // so MP marks the webhook healthy and stops retrying.
+        const status = e?.status ?? e?.response?.status;
+        const message = String(e?.message ?? '');
+        if (status === 404 || /not found/i.test(message)) {
+          this.logger.warn(
+            `Payment ${paymentId} not found in MercadoPago — acknowledging webhook without processing.`,
+          );
+          return;
+        }
+        throw e;
+      }
 
       if (
         !response.id ||
