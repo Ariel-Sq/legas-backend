@@ -4,16 +4,26 @@ import {
   IsBoolean,
   IsObject,
   IsDateString,
+  IsOptional,
 } from 'class-validator';
-import { ApiProperty } from '@nestjs/swagger';
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
+/**
+ * MercadoPago does not commit to consistent types in webhook payloads:
+ * - `id` is a numeric string in test events but documented as either
+ *   string or number depending on event type.
+ * - `application_id` is omitted in some test events.
+ * - `user_id` can be a number (live) or a numeric string (some tests).
+ * Validations below were loosened to match what the upstream actually
+ * sends, instead of what the docs claim.
+ */
 export class WebhookNotificationDto {
   @ApiProperty({
     description: 'The ID of the notification',
-    example: 1234567890,
+    example: '1234567890',
   })
-  @IsNumber()
-  id: number;
+  @IsString()
+  id: string;
 
   @ApiProperty({
     description: 'Whether the notification is from live mode or test mode',
@@ -36,12 +46,13 @@ export class WebhookNotificationDto {
   @IsDateString()
   date_created: string;
 
-  @ApiProperty({
-    description: 'The application ID',
+  @ApiPropertyOptional({
+    description: 'The application ID (omitted by MP test events)',
     example: 123456789012345,
   })
+  @IsOptional()
   @IsNumber()
-  application_id: number;
+  application_id?: number;
 
   @ApiProperty({
     description: 'The user ID',
