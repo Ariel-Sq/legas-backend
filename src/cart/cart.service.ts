@@ -10,7 +10,11 @@ import { CartItem } from './entities/cart-item.entity';
 import { AddToCartDto } from './dto/add-to-cart.dto';
 import { UpdateCartItemDto } from './dto/update-cart-item.dto';
 import { ProductVariationsService } from '@app/products/products.service';
+import { rewriteCartItemImageUrls } from '@app/utils/image-url';
 import { v4 as uuidv4 } from 'uuid';
+
+const toMoney = (n: number | string) =>
+  Math.round(Number(n) * 100) / 100;
 
 /**
  * Service for managing shopping cart operations
@@ -27,9 +31,16 @@ export class CartService {
   ) {}
 
   async findAll(): Promise<Cart[]> {
-    return this.cartRepository.find({
-      relations: ['items', 'items.productVariation'],
+    const carts = await this.cartRepository.find({
+      relations: ['items', 'items.productVariation', 'items.productVariation.images'],
     });
+    carts.forEach((c) => rewriteCartItemImageUrls(c.items));
+    return carts;
+  }
+
+  private withImageUrls(cart: Cart): Cart {
+    rewriteCartItemImageUrls(cart.items);
+    return cart;
   }
 
   /**
@@ -45,13 +56,13 @@ export class CartService {
       // Find cart by user ID
       cart = await this.cartRepository.findOne({
         where: { userId },
-        relations: ['items', 'items.productVariation'],
+        relations: ['items', 'items.productVariation', 'items.productVariation.images'],
       });
     } else if (sessionId) {
       // Find cart by session ID (anonymous users)
       cart = await this.cartRepository.findOne({
         where: { sessionId },
-        relations: ['items', 'items.productVariation'],
+        relations: ['items', 'items.productVariation', 'items.productVariation.images'],
       });
     }
 
@@ -67,7 +78,7 @@ export class CartService {
       cart = await this.cartRepository.save(newCart);
     }
 
-    return cart;
+    return this.withImageUrls(cart);
   }
 
   /**
@@ -128,7 +139,7 @@ export class CartService {
         productId,
         existingItem.quantity,
       );
-      existingItem.price = unitPrice * existingItem.quantity;
+      existingItem.price = toMoney(unitPrice * existingItem.quantity);
       await this.cartItemRepository.save(existingItem);
     } else {
       // Create new item if it doesn't exist
@@ -140,7 +151,7 @@ export class CartService {
         productId,
         quantity,
       );
-      cartItem.price = unitPrice * quantity;
+      cartItem.price = toMoney(unitPrice * quantity);
       cartItem.productVariation = productVariation;
 
       const savedItem = await this.cartItemRepository.save(cartItem);
@@ -149,12 +160,12 @@ export class CartService {
 
     // Update cart totals
     cart.totalItems = cart.items.reduce((sum, item) => sum + item.quantity, 0);
-    cart.totalPrice = cart.items.reduce(
-      (sum, item) => sum + Number(item.price),
-      0,
+    cart.totalPrice = toMoney(
+      cart.items.reduce((sum, item) => sum + Number(item.price), 0),
     );
 
-    return this.cartRepository.save(cart);
+    const saved = await this.cartRepository.save(cart);
+    return this.withImageUrls(saved);
   }
 
   /**
@@ -173,7 +184,7 @@ export class CartService {
 
     const cart = await this.cartRepository.findOne({
       where: { id: cartId },
-      relations: ['items', 'items.productVariation'],
+      relations: ['items', 'items.productVariation', 'items.productVariation.images'],
     });
 
     if (!cart) {
@@ -210,25 +221,25 @@ export class CartService {
       cartItem.productVariationId,
       quantity,
     );
-    cartItem.price = unitPrice * quantity;
+    cartItem.price = toMoney(unitPrice * quantity);
 
     await this.cartItemRepository.save(cartItem);
 
     // Update cart totals
     cart.totalItems = cart.items.reduce((sum, item) => sum + item.quantity, 0);
-    cart.totalPrice = cart.items.reduce(
-      (sum, item) => sum + Number(item.price),
-      0,
+    cart.totalPrice = toMoney(
+      cart.items.reduce((sum, item) => sum + Number(item.price), 0),
     );
 
-    return this.cartRepository.save(cart);
+    const saved = await this.cartRepository.save(cart);
+    return this.withImageUrls(saved);
   }
 
   // Remove a product from the cart
   async removeFromCart(cartId: string, itemId: string): Promise<Cart> {
     const cart = await this.cartRepository.findOne({
       where: { id: cartId },
-      relations: ['items', 'items.productVariation'],
+      relations: ['items', 'items.productVariation', 'items.productVariation.images'],
     });
 
     if (!cart) {
@@ -251,12 +262,12 @@ export class CartService {
 
     // Update cart totals
     cart.totalItems = cart.items.reduce((sum, item) => sum + item.quantity, 0);
-    cart.totalPrice = cart.items.reduce(
-      (sum, item) => sum + Number(item.price),
-      0,
+    cart.totalPrice = toMoney(
+      cart.items.reduce((sum, item) => sum + Number(item.price), 0),
     );
 
-    return this.cartRepository.save(cart);
+    const saved = await this.cartRepository.save(cart);
+    return this.withImageUrls(saved);
   }
 
   async clearAll(): Promise<void> {
@@ -281,6 +292,7 @@ export class CartService {
     cart.totalItems = 0;
     cart.totalPrice = 0;
 
-    return this.cartRepository.save(cart);
+    const saved = await this.cartRepository.save(cart);
+    return this.withImageUrls(saved);
   }
 }
