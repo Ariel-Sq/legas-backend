@@ -4,13 +4,19 @@ import {
   Get,
   NotFoundException,
   Param,
+  Patch,
   Post,
+  UseGuards,
 } from '@nestjs/common';
 import { ApiOperation, ApiParam, ApiResponse } from '@nestjs/swagger';
 import { UsersService } from './users.service';
 import { CreateUserDto } from './dto/create-user.dto';
 import { CreateOAuthUserDto } from './dto/create-oauth-user.dto';
+import { UpdateProfileDto } from './dto/update-profile.dto';
 import { User } from './entities/user.entity';
+import { AuthenticatedGuard } from '@app/auth/guards/authenticated.guard';
+import { UserInfo } from '@app/auth/decorators/user-info.decorator';
+import type { UserInfoType } from '@app/auth/decorators/user-info.decorator';
 
 /**
  * Public registration endpoint. Reads/updates of users live in
@@ -40,6 +46,22 @@ export class UsersController {
     return this.usersService.createOrFindOAuthUser(dto);
   }
 
+  @Patch('me')
+  @UseGuards(AuthenticatedGuard)
+  @ApiOperation({
+    summary: 'Update the current user’s profile',
+    description:
+      'Self-service update for contact and shipping fields. Email and role are not editable here.',
+  })
+  @ApiResponse({ status: 200, type: User })
+  @ApiResponse({ status: 401, description: 'Not authenticated.' })
+  async updateMe(
+    @UserInfo() userInfo: UserInfoType,
+    @Body() dto: UpdateProfileDto,
+  ): Promise<User> {
+    return this.usersService.update(userInfo.userId!, dto);
+  }
+
   @Get('by-email/:email')
   @ApiOperation({
     summary: 'Look up a user by email (public)',
@@ -53,6 +75,23 @@ export class UsersController {
     const user = await this.usersService.findByEmail(email);
     if (!user) {
       throw new NotFoundException(`No user with email ${email}`);
+    }
+    return user;
+  }
+
+  @Get('by-id/:id')
+  @ApiOperation({
+    summary: 'Look up a user by id (public)',
+    description:
+      'Used by the dev impersonation flow on the frontend so the NextAuth session can be swapped to the impersonated user.',
+  })
+  @ApiParam({ name: 'id' })
+  @ApiResponse({ status: 200, type: User })
+  @ApiResponse({ status: 404, description: 'User not found' })
+  async findById(@Param('id') id: string): Promise<User> {
+    const user = await this.usersService.findByIdSafe(id);
+    if (!user) {
+      throw new NotFoundException(`No user with id ${id}`);
     }
     return user;
   }
