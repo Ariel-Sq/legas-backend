@@ -82,7 +82,7 @@ export class ReviewsService {
         .andWhere('item.productVariationId = :productVariationId', {
           productVariationId: createReviewDto.productVariationId,
         })
-        .andWhere('order.status = :status', { status: 'completed' })
+        .andWhere('order.status = :status', { status: 'paid_delivered' })
         .getOne();
 
       if (order) {
