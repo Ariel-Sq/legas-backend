@@ -68,7 +68,7 @@ export class ReviewsService {
       },
     });
     if (existingReview) {
-      throw new BadRequestException('You have already reviewed this product');
+      throw new ConflictException('You have already reviewed this product');
     }
 
     let isVerifiedPurchase = false;
