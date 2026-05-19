@@ -47,7 +47,7 @@ This document outlines planned enhancements and features for the Ecommerce backe
 ### Wishlist module (per-user, replaces localStorage-only)
 
 - [ ] The frontend currently stores favorites in `localStorage` under
-      `ltecdeco-wishlist`, so the list is tied to the browser, not to
+      `legas-wishlist`, so the list is tied to the browser, not to
       the user. Two devices for the same user don't share, and shared
       browsers cross-contaminate.
 - [ ] Build a thin backend module:
