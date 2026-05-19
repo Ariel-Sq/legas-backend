@@ -51,7 +51,7 @@ export class OrderService {
     const order = orderRepo.create({
       userId: data.userId || undefined,
       sessionId: data.sessionId || undefined,
-      status: OrderStatus.PENDING,
+      status: OrderStatus.PROCESSING_PAYMENT,
       totalAmount: data.totalAmount,
     });
     const savedOrder = await orderRepo.save(order);
@@ -87,6 +87,22 @@ export class OrderService {
    * anon shoppers get them by the sessionId cookie. Returns [] when neither
    * is present.
    */
+  /**
+   * Admin-only listing — returns every order with the same relations as
+   * the per-customer view so the panel can render images and items.
+   */
+  async findForAdmin(): Promise<Order[]> {
+    return this.orderRepository
+      .createQueryBuilder('order')
+      .leftJoinAndSelect('order.items', 'item')
+      .leftJoinAndSelect('item.productVariation', 'variation')
+      .leftJoinAndSelect('variation.images', 'image')
+      .leftJoinAndSelect('order.paymentDetails', 'paymentDetail')
+      .leftJoinAndSelect('order.user', 'user')
+      .orderBy('order.createdAt', 'DESC')
+      .getMany();
+  }
+
   async findForCustomer(
     userId?: string,
     sessionId?: string,
@@ -145,27 +161,96 @@ export class OrderService {
         transactionId: paymentData.id,
       });
 
-      await orderRepo.update(order.id, { status: orderStatus });
+      // Don't downgrade an order that already moved through the manual
+      // post-payment cycle (ready_to_ship / shipped / delivered). A late
+      // MP webhook telling us the payment is "pending" shouldn't reset
+      // the order. Refunds are the only signal we always honor.
+      const protectedStatuses: OrderStatus[] = [
+        OrderStatus.PAID_READY_TO_SHIP,
+        OrderStatus.PAID_SHIPPED,
+        OrderStatus.PAID_DELIVERED,
+      ];
+      const canUpdate =
+        !protectedStatuses.includes(order.status) ||
+        orderStatus === OrderStatus.REFUNDED;
+      if (canUpdate) {
+        await orderRepo.update(order.id, { status: orderStatus });
+      }
     });
   }
 
+  /**
+   * Maps a MercadoPago payment status to our order status. Only handles the
+   * automatic transitions driven by MP — the manual post-payment lifecycle
+   * (preparing → ready_to_ship → shipped → delivered) is driven by the
+   * admin endpoint.
+   *
+   * `approved` lands on PAID_PREPARING (start of the seller-driven cycle).
+   * Anything that puts the order into PAID_* should not be downgraded by a
+   * later out-of-order webhook, so the caller checks the current status
+   * before applying this mapping.
+   */
   private mapPaymentStatusToOrderStatus(paymentStatus: string): OrderStatus {
     switch (paymentStatus.toLowerCase()) {
       case 'approved':
-        return OrderStatus.COMPLETED;
+        return OrderStatus.PAID_PREPARING;
       case 'pending':
-        return OrderStatus.PENDING;
       case 'in_process':
-        return OrderStatus.PROCESSING;
+        return OrderStatus.PROCESSING_PAYMENT;
       case 'rejected':
       case 'failed':
+      case 'cancelled':
         return OrderStatus.CANCELLED;
       case 'refunded':
         return OrderStatus.REFUNDED;
-      case 'cancelled':
-        return OrderStatus.CANCELLED;
       default:
-        return OrderStatus.PENDING;
+        return OrderStatus.PROCESSING_PAYMENT;
     }
+  }
+
+  /**
+   * Admin-driven status transition. Validates the move follows the
+   * permitted post-payment graph so the seller can't, e.g., jump from
+   * preparing straight to delivered without going through shipped, or
+   * cancel an order that was already delivered.
+   */
+  async transitionStatus(
+    orderId: string,
+    next: OrderStatus,
+  ): Promise<Order> {
+    const order = await this.findById(orderId);
+    if (!order) {
+      throw new Error(`Order ${orderId} not found`);
+    }
+
+    const allowed: Record<OrderStatus, OrderStatus[]> = {
+      [OrderStatus.PROCESSING_PAYMENT]: [OrderStatus.CANCELLED],
+      [OrderStatus.PAID_PREPARING]: [
+        OrderStatus.PAID_READY_TO_SHIP,
+        OrderStatus.REFUNDED,
+        OrderStatus.CANCELLED,
+      ],
+      [OrderStatus.PAID_READY_TO_SHIP]: [
+        OrderStatus.PAID_PREPARING,
+        OrderStatus.PAID_SHIPPED,
+        OrderStatus.REFUNDED,
+      ],
+      [OrderStatus.PAID_SHIPPED]: [
+        OrderStatus.PAID_DELIVERED,
+        OrderStatus.REFUNDED,
+      ],
+      [OrderStatus.PAID_DELIVERED]: [OrderStatus.REFUNDED],
+      [OrderStatus.CANCELLED]: [],
+      [OrderStatus.REFUNDED]: [],
+    };
+
+    if (!allowed[order.status]?.includes(next)) {
+      throw new Error(
+        `Invalid transition: ${order.status} → ${next}`,
+      );
+    }
+
+    await this.orderRepository.update(order.id, { status: next });
+    return this.findById(order.id) as Promise<Order>;
   }
 }

@@ -13,9 +13,11 @@ import { OrderPaymentDetail } from './order-payment-detail.entity';
 import { User } from '@app/users/entities/user.entity';
 
 export enum OrderStatus {
-  PENDING = 'pending',
-  PROCESSING = 'processing',
-  COMPLETED = 'completed',
+  PROCESSING_PAYMENT = 'processing_payment',
+  PAID_PREPARING = 'paid_preparing',
+  PAID_READY_TO_SHIP = 'paid_ready_to_ship',
+  PAID_SHIPPED = 'paid_shipped',
+  PAID_DELIVERED = 'paid_delivered',
   CANCELLED = 'cancelled',
   REFUNDED = 'refunded',
 }
@@ -38,7 +40,7 @@ export class Order {
   @Column({
     type: 'enum',
     enum: OrderStatus,
-    default: OrderStatus.PENDING,
+    default: OrderStatus.PROCESSING_PAYMENT,
   })
   status: OrderStatus;
 
