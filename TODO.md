@@ -19,17 +19,27 @@ This document outlines planned enhancements and features for the Ecommerce backe
 - [x] Support for OAuth providers (Google, Facebook)
 - [x] Improve database schema
 - [x] Create Cart entity to store temporary orders
-- [x] Add endpoints for cart management- [x] Basic product retrieval
-- [x] Basic rating and reviewCount fields on product entity
-- [x] Basic stock status field on product entity
+- [x] Add endpoints for cart management
+- [x] MercadoPago checkout + webhook + order lifecycle (7 statuses)
+- [x] Orders module (entity, history, status tracking, admin transitions)
+- [x] Reviews module (entity, ratings, moderation, "my reviews")
+- [x] Search / pagination on products (frontend does it in-process today;
+      see "Native query support" below for the backend follow-up)
+- [x] Wishlist module (per-user, AuthenticatedGuard, idempotent POST)
+- [x] PATCH /api/users/me + GET /api/users/by-id/:id
 
 ## Next Steps
 
-- [ ] Implement MercadoPago 👷🏻‍♂️ S
-      . When preference is created, the order should be created and the payment should be created with it and status should be pending.
-      . If user goes to the checkout page, try to get the order and payment by the external reference. If not found, create a new one.
-- [ ] Implement certificate authentication between the backend and the frontend. Header signature with the certificate.
-- [ ] Check AuthMiddleware, UserInfo and AuthenticatedGuard to ensure proper user authentication flow.
+- [ ] Native `q` / `page` / `limit` support on `/api/product-templates`.
+      Today the frontend's `getShopProductsPage` fetches every template
+      and filters + paginates in-process. Works fine for ~12 SKUs but
+      will need real query params once the catalogue grows.
+- [ ] Implement certificate authentication between the backend and the
+      frontend. Header signature with the certificate.
+- [ ] Lock down `/api/users/oauth` and `/api/users/by-id/:id` so only the
+      frontend can call them (shared secret header is fine for now).
+- [ ] Check AuthMiddleware, UserInfo and AuthenticatedGuard to ensure
+      proper user authentication flow.
 
 ## Nice to have
 
@@ -44,71 +54,25 @@ This document outlines planned enhancements and features for the Ecommerce backe
       Optional: also clear the sessionId cookie on logout so a returning
       anon doesn't resurrect the abandoned cart.
 
-### Wishlist module (per-user, replaces localStorage-only)
+### Reviews
 
-- [ ] The frontend currently stores favorites in `localStorage` under
-      `legas-wishlist`, so the list is tied to the browser, not to
-      the user. Two devices for the same user don't share, and shared
-      browsers cross-contaminate.
-- [ ] Build a thin backend module:
-      - Migration `CreateWishlistItemsTable` → `wishlist_items` with
-        `id uuid`, `user_id uuid FK users ON DELETE CASCADE`,
-        `product_variation_id uuid FK product_variations ON DELETE CASCADE`,
-        `created_at timestamptz default now()`, and a unique index on
-        `(user_id, product_variation_id)`.
-      - Entity `WishlistItem` with `@ManyToOne` to `User` and
-        `ProductVariation`.
-      - `WishlistModule` + `WishlistService` + `WishlistController`
-        guarded by `AuthenticatedGuard`:
-          - `GET    /api/wishlist`                   → list for the user
-          - `POST   /api/wishlist { variationId }`   → idempotent insert
-          - `DELETE /api/wishlist/:variationId`      → remove
-- [ ] Frontend: keep `localStorage` only while the user is anonymous;
-      on login, sync the local items up (one POST per item, ignore
-      409 conflicts) and from then on read/write through the API.
+- [ ] Add support to upload images in review endpoints.
 
-## Images review
+### Authentication & Authorization
 
-- [ ] Add support to upload images in review endpoints
+- [ ] Implement JWT-based authentication.
 
-## Authentication & Authorization
+### Inventory Management
 
-- [ ] Implement JWT-based authentication
+- [ ] Track product stock levels with dedicated inventory system.
+- [ ] Add automatic inventory updates on order placement.
 
-## Orders Module
+### Cache Implementation
 
-- [ ] Create Order entity with relationships to products
-- [ ] Implement checkout process
-- [ ] Add order history and status tracking
+- [ ] Add Redis caching for frequently accessed data.
+- [ ] Cache product listings and other high-volume endpoints.
 
-## Product Reviews & Ratings
+### Webhooks & Notifications
 
-- [ ] Create a dedicated Review entity linked to products and users
-- [ ] Add endpoints for submitting and fetching reviews
-- [ ] Calculate average ratings automatically
-
-## Search & Filtering
-
-- [ ] Implement advanced search functionality for products
-- [ ] Add filtering by multiple criteria
-- [ ] Add pagination and sorting options
-
-## Inventory Management
-
-- [ ] Track product stock levels with dedicated inventory system
-- [ ] Add automatic inventory updates on order placement
-
-## Payment Integration
-
-- [ ] Integrate with payment gateways like Stripe or PayPal
-- [ ] Implement payment status tracking
-
-## Cache Implementation
-
-- [ ] Add Redis caching for frequently accessed data
-- [ ] Cache product listings and other high-volume endpoints
-
-## Webhooks & Notifications
-
-- [ ] Implement webhooks for third-party integrations
-- [ ] Add notification system (email, push) for order updates
+- [ ] Email / push notification system for order status changes
+      (MercadoPago webhook is already wired; this is the outbound side).
