@@ -137,6 +137,13 @@ export class ReviewsService {
     return review;
   }
 
+  async findByUser(userId: string): Promise<Review[]> {
+    return this.reviewRepository.find({
+      where: { userId },
+      order: { createdAt: 'DESC' },
+    });
+  }
+
   async findAll(viewerUserId?: string): Promise<Review[]> {
     const reviews = await this.reviewRepository.find({
       relations: ['user', 'productVariation', 'images'],

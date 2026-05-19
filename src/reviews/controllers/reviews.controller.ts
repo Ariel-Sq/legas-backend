@@ -34,6 +34,19 @@ export class ReviewsController {
     return this.reviewsService.findAll(userInfo.userId);
   }
 
+  @Get('mine')
+  @UseGuards(AuthenticatedGuard)
+  @ApiOperation({
+    summary: 'List the current user’s reviews',
+    description:
+      'Used by the frontend to mark already-reviewed products in /orders.',
+  })
+  @ApiResponse({ status: 200, type: [Review] })
+  @ApiResponse({ status: 401, description: 'Not authenticated' })
+  async findMine(@UserInfo() userInfo: any): Promise<Review[]> {
+    return this.reviewsService.findByUser(userInfo.userId);
+  }
+
   @Post()
   @UseGuards(AuthenticatedGuard)
   @ApiOperation({
