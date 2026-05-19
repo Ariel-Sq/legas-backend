@@ -42,6 +42,8 @@ export class OrderService {
       sessionId?: string;
       items: CheckoutItemDto[];
       totalAmount: number;
+      customerEmail?: string;
+      customerPhone?: string;
     },
   ): Promise<Order> {
     const orderRepo = manager.getRepository(Order);
@@ -53,6 +55,8 @@ export class OrderService {
       sessionId: data.sessionId || undefined,
       status: OrderStatus.PROCESSING_PAYMENT,
       totalAmount: data.totalAmount,
+      customerEmail: data.customerEmail ?? null,
+      customerPhone: data.customerPhone ?? null,
     });
     const savedOrder = await orderRepo.save(order);
 

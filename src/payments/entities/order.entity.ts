@@ -47,6 +47,12 @@ export class Order {
   @Column('decimal', { precision: 10, scale: 2 })
   totalAmount: number;
 
+  @Column({ type: 'varchar', nullable: true })
+  customerEmail: string | null;
+
+  @Column({ type: 'varchar', nullable: true })
+  customerPhone: string | null;
+
   @OneToMany(() => OrderItem, (item) => item.order, { cascade: true })
   items: OrderItem[];
 

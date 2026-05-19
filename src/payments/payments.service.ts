@@ -54,6 +54,7 @@ export class PaymentsService {
     cart: Cart,
     userId?: string,
     sessionId?: string,
+    contact: { customerEmail?: string; customerPhone?: string } = {},
   ) {
     if (userId) {
       await this.usersService.findById(userId);
@@ -87,6 +88,8 @@ export class PaymentsService {
         sessionId,
         items: checkoutItems,
         totalAmount,
+        customerEmail: contact.customerEmail,
+        customerPhone: contact.customerPhone,
       });
     });
 
