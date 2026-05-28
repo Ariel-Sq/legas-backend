@@ -14,7 +14,7 @@ export class OrdersController {
   @ApiOperation({
     summary: 'List the current shopper orders',
     description:
-      'Returns orders scoped to the authenticated user when x-user-id is present, otherwise to the anonymous sessionId cookie. Empty array when neither is available.',
+      'Returns orders scoped to the authenticated user (Bearer token) when present, otherwise to the anonymous sessionId cookie. Empty array when neither is available.',
   })
   @ApiResponse({ status: 200, type: [Order] })
   async findMine(@UserInfo() userInfo: any): Promise<Order[]> {

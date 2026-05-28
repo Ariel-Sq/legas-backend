@@ -30,7 +30,7 @@ import type { UserInfoType } from '@app/auth/decorators/user-info.decorator';
  * Every endpoint requires authentication via AuthenticatedGuard.
  */
 @ApiTags('Wishlist')
-@ApiSecurity('x-user-id')
+@ApiSecurity('bearer')
 @UseGuards(AuthenticatedGuard)
 @Controller('wishlist')
 export class WishlistController {

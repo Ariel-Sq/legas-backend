@@ -20,11 +20,7 @@ export class AddContactInfoToOrders1779500000000 implements MigrationInterface {
   }
 
   public async down(queryRunner: QueryRunner): Promise<void> {
-    await queryRunner.query(
-      `ALTER TABLE "orders" DROP COLUMN "customerPhone"`,
-    );
-    await queryRunner.query(
-      `ALTER TABLE "orders" DROP COLUMN "customerEmail"`,
-    );
+    await queryRunner.query(`ALTER TABLE "orders" DROP COLUMN "customerPhone"`);
+    await queryRunner.query(`ALTER TABLE "orders" DROP COLUMN "customerEmail"`);
   }
 }

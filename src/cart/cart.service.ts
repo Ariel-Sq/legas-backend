@@ -13,8 +13,7 @@ import { ProductVariationsService } from '@app/products/products.service';
 import { rewriteCartItemImageUrls } from '@app/utils/image-url';
 import { v4 as uuidv4 } from 'uuid';
 
-const toMoney = (n: number | string) =>
-  Math.round(Number(n) * 100) / 100;
+const toMoney = (n: number | string) => Math.round(Number(n) * 100) / 100;
 
 /**
  * Service for managing shopping cart operations
@@ -32,7 +31,11 @@ export class CartService {
 
   async findAll(): Promise<Cart[]> {
     const carts = await this.cartRepository.find({
-      relations: ['items', 'items.productVariation', 'items.productVariation.images'],
+      relations: [
+        'items',
+        'items.productVariation',
+        'items.productVariation.images',
+      ],
     });
     carts.forEach((c) => rewriteCartItemImageUrls(c.items));
     return carts;
@@ -56,13 +59,21 @@ export class CartService {
       // Find cart by user ID
       cart = await this.cartRepository.findOne({
         where: { userId },
-        relations: ['items', 'items.productVariation', 'items.productVariation.images'],
+        relations: [
+          'items',
+          'items.productVariation',
+          'items.productVariation.images',
+        ],
       });
     } else if (sessionId) {
       // Find cart by session ID (anonymous users)
       cart = await this.cartRepository.findOne({
         where: { sessionId },
-        relations: ['items', 'items.productVariation', 'items.productVariation.images'],
+        relations: [
+          'items',
+          'items.productVariation',
+          'items.productVariation.images',
+        ],
       });
     }
 
@@ -184,7 +195,11 @@ export class CartService {
 
     const cart = await this.cartRepository.findOne({
       where: { id: cartId },
-      relations: ['items', 'items.productVariation', 'items.productVariation.images'],
+      relations: [
+        'items',
+        'items.productVariation',
+        'items.productVariation.images',
+      ],
     });
 
     if (!cart) {
@@ -239,7 +254,11 @@ export class CartService {
   async removeFromCart(cartId: string, itemId: string): Promise<Cart> {
     const cart = await this.cartRepository.findOne({
       where: { id: cartId },
-      relations: ['items', 'items.productVariation', 'items.productVariation.images'],
+      relations: [
+        'items',
+        'items.productVariation',
+        'items.productVariation.images',
+      ],
     });
 
     if (!cart) {

@@ -33,9 +33,7 @@ async function bootstrap() {
   );
 
   // Strip @Exclude()-marked fields from responses (e.g. user.password, tokens)
-  app.useGlobalInterceptors(
-    new ClassSerializerInterceptor(app.get(Reflector)),
-  );
+  app.useGlobalInterceptors(new ClassSerializerInterceptor(app.get(Reflector)));
 
   // Apply global exception filter
   app.useGlobalFilters(new GlobalExceptionFilter());
@@ -45,18 +43,16 @@ async function bootstrap() {
     .setTitle('Ecommerce API')
     .setDescription('API documentation for Ecommerce application')
     .setVersion('1.0')
-    .addApiKey(
+    .addBearerAuth(
       {
-        type: 'apiKey',
-        name: 'x-user-id',
-        in: 'header',
-        description: 'User ID from external provider authentication',
+        type: 'http',
+        scheme: 'bearer',
+        bearerFormat: 'JWT',
+        description: 'Backend session JWT obtained from POST /api/auth/google.',
       },
-      'x-user-id',
+      'bearer',
     )
-    .addSecurityRequirements({
-      'x-user-id': [],
-    })
+    .addSecurityRequirements('bearer')
     .build();
 
   const document = SwaggerModule.createDocument(app, config);

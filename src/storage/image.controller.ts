@@ -53,11 +53,13 @@ export class ImageController {
       throw new BadRequestException('Image not found or could not be loaded');
     }
 
-    const contentType =
-      path.toLowerCase().endsWith('.png') ? 'image/png'
-      : path.toLowerCase().endsWith('.webp') ? 'image/webp'
-      : path.toLowerCase().endsWith('.gif') ? 'image/gif'
-      : 'image/jpeg';
+    const contentType = path.toLowerCase().endsWith('.png')
+      ? 'image/png'
+      : path.toLowerCase().endsWith('.webp')
+        ? 'image/webp'
+        : path.toLowerCase().endsWith('.gif')
+          ? 'image/gif'
+          : 'image/jpeg';
     res.set({
       'Content-Type': contentType,
       'Cache-Control': 'public, max-age=3600',

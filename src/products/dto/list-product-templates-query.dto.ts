@@ -1,6 +1,13 @@
 import { ApiPropertyOptional } from '@nestjs/swagger';
 import { Transform, Type } from 'class-transformer';
-import { IsBoolean, IsEnum, IsInt, IsOptional, Max, Min } from 'class-validator';
+import {
+  IsBoolean,
+  IsEnum,
+  IsInt,
+  IsOptional,
+  Max,
+  Min,
+} from 'class-validator';
 
 export enum ProductTemplateSortField {
   CREATED_AT = 'created_at',
@@ -14,7 +21,10 @@ export enum SortOrder {
 }
 
 export class ListProductTemplatesQueryDto {
-  @ApiPropertyOptional({ enum: ProductTemplateSortField, default: ProductTemplateSortField.NAME })
+  @ApiPropertyOptional({
+    enum: ProductTemplateSortField,
+    default: ProductTemplateSortField.NAME,
+  })
   @IsEnum(ProductTemplateSortField)
   @IsOptional()
   sort?: ProductTemplateSortField;

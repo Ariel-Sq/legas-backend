@@ -305,10 +305,7 @@ export class PaymentsService {
         );
       }
     } catch (error: any) {
-      this.logger.error(
-        `Failed to clear cart: ${error.message}`,
-        error.stack,
-      );
+      this.logger.error(`Failed to clear cart: ${error.message}`, error.stack);
     }
   }
 }

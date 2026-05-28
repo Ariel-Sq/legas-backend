@@ -1,6 +1,8 @@
 import { Injectable, NestMiddleware } from '@nestjs/common';
 import { Request, Response, NextFunction } from 'express';
 import { v4 as uuidv4 } from 'uuid';
+import { IS_PRODUCTION } from '@app/utils/environments';
+import { verifyAuthToken } from '@app/auth/jwt.util';
 
 // User object interface for request extension
 export interface AuthenticatedUser {
@@ -27,20 +29,20 @@ const SESSION_CONFIG = {
 /**
  * Unified middleware for handling both authenticated and anonymous users.
  *
- * SECURITY MODEL: `x-user-id` is trusted as-is. The deployment relies on an
- * upstream gateway (or VPN/network boundary for the admin surface) to strip
- * any client-supplied `x-user-id` before forwarding. Replace with JWT
- * verification when issuance is implemented (see TODO.md).
+ * SECURITY MODEL: authenticated identity comes solely from a backend-issued
+ * JWT sent as `Authorization: Bearer <token>`. The token is signed by this
+ * service (see jwt.util) after a Google id_token was verified at login
+ * (AuthService), so it cannot be forged by a client. This is identical in
+ * development and production — there is no header-based bypass.
  */
 @Injectable()
 export class AuthMiddleware implements NestMiddleware {
   use(req: Request, res: Response, next: NextFunction): void {
-    const userId = req.headers['x-user-id'] as string;
+    const authenticatedId = AuthMiddleware.resolveAuthenticatedId(req);
 
-    if (userId) {
-      // Authenticated user from external provider
+    if (authenticatedId) {
       req.user = {
-        id: userId,
+        id: authenticatedId,
         type: 'authenticated',
         isAuthenticated: true,
         isAnonymous: false,
@@ -58,6 +60,27 @@ export class AuthMiddleware implements NestMiddleware {
     }
 
     next();
+  }
+
+  /**
+   * Resolve a verified user id from the request, or null if the caller is not
+   * authenticated. Identity comes only from a valid Bearer JWT. A present-but-
+   * invalid token is treated as anonymous rather than a hard 401 here; route
+   * guards decide whether authentication is required.
+   */
+  private static resolveAuthenticatedId(req: Request): string | null {
+    const bearer = AuthMiddleware.extractBearerToken(req);
+    if (!bearer) return null;
+    const claims = verifyAuthToken(bearer);
+    return claims ? claims.sub : null;
+  }
+
+  private static extractBearerToken(req: Request): string | null {
+    const header = req.headers['authorization'];
+    if (typeof header !== 'string') return null;
+    const [scheme, token] = header.split(' ');
+    if (scheme?.toLowerCase() !== 'bearer' || !token) return null;
+    return token.trim();
   }
 
   /**
@@ -80,7 +103,7 @@ export class AuthMiddleware implements NestMiddleware {
       res.cookie(SESSION_CONFIG.cookieName, sessionId, {
         httpOnly: SESSION_CONFIG.httpOnly,
         maxAge: SESSION_CONFIG.maxAge,
-        secure: process.env.NODE_ENV === 'production',
+        secure: IS_PRODUCTION,
         sameSite: 'lax',
       });
 
@@ -94,16 +117,17 @@ export class AuthMiddleware implements NestMiddleware {
   }
 
   /**
-   * Static method to get user info from request (for use in decorators)
+   * Static helper to get user info from request (for use in decorators).
+   * Reads the identity that `use()` already resolved onto `req.user`, so the
+   * decorator and the guards always agree on who the caller is.
    * @param req Express request object
    * @returns User identification info
    */
   static getUserInfo(req: Request): { userId?: string; sessionId?: string } {
-    const userId = req.headers['x-user-id'] as string;
-    const sessionId =
-      req.cookies?.[SESSION_CONFIG.cookieName] ||
-      (req.headers['x-session-id'] as string);
-
-    return { userId, sessionId };
+    const user = req.user;
+    if (user?.isAuthenticated) {
+      return { userId: user.id };
+    }
+    return { sessionId: user?.id };
   }
 }

@@ -21,7 +21,9 @@ export function publicImageUrl(image: ImageLike | undefined | null): string {
   return image.url ?? '';
 }
 
-export function rewriteVariationImageUrls(variation: VariationLike | null | undefined): void {
+export function rewriteVariationImageUrls(
+  variation: VariationLike | null | undefined,
+): void {
   if (!variation?.images) return;
   for (const image of variation.images) {
     if (image.path) {
@@ -30,7 +32,9 @@ export function rewriteVariationImageUrls(variation: VariationLike | null | unde
   }
 }
 
-export function rewriteCartItemImageUrls<T extends HasVariations>(items: T[] | undefined): void {
+export function rewriteCartItemImageUrls<T extends HasVariations>(
+  items: T[] | undefined,
+): void {
   if (!items) return;
   for (const item of items) {
     rewriteVariationImageUrls(item.productVariation);

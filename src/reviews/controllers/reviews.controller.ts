@@ -27,7 +27,7 @@ export class ReviewsController {
   @ApiOperation({
     summary: 'List all reviews',
     description:
-      'Returns all reviews in the system. When the request carries x-user-id, each review includes votedByMe.',
+      'Returns all reviews in the system. When the request is authenticated (Bearer token), each review includes votedByMe.',
   })
   @ApiResponse({ status: 200, type: [Review] })
   async findAll(@UserInfo() userInfo: any): Promise<Review[]> {

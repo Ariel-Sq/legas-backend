@@ -107,10 +107,7 @@ export class OrderService {
       .getMany();
   }
 
-  async findForCustomer(
-    userId?: string,
-    sessionId?: string,
-  ): Promise<Order[]> {
+  async findForCustomer(userId?: string, sessionId?: string): Promise<Order[]> {
     if (!userId && !sessionId) return [];
     // Use the query builder instead of `find({ where })` because the where
     // shorthand was tripping Postgres' `uuid = character varying` check when
@@ -218,10 +215,7 @@ export class OrderService {
    * preparing straight to delivered without going through shipped, or
    * cancel an order that was already delivered.
    */
-  async transitionStatus(
-    orderId: string,
-    next: OrderStatus,
-  ): Promise<Order> {
+  async transitionStatus(orderId: string, next: OrderStatus): Promise<Order> {
     const order = await this.findById(orderId);
     if (!order) {
       throw new Error(`Order ${orderId} not found`);
@@ -249,9 +243,7 @@ export class OrderService {
     };
 
     if (!allowed[order.status]?.includes(next)) {
-      throw new Error(
-        `Invalid transition: ${order.status} → ${next}`,
-      );
+      throw new Error(`Invalid transition: ${order.status} → ${next}`);
     }
 
     await this.orderRepository.update(order.id, { status: next });

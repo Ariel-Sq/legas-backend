@@ -36,7 +36,7 @@ export class CartController {
   @Get()
   @ApiOperation({ summary: 'Get current cart' })
   @ApiResponse({ status: 200, description: 'Cart found', type: Cart })
-  @ApiSecurity('x-user-id')
+  @ApiSecurity('bearer')
   async getCart(@UserInfo() userInfo: UserInfoType) {
     const { userId, sessionId } = userInfo;
     return this.cartService.getOrCreateCart(userId, sessionId);

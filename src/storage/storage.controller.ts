@@ -1,9 +1,4 @@
-import {
-  Controller,
-  Get,
-  Query,
-  Inject,
-} from '@nestjs/common';
+import { Controller, Get, Query, Inject } from '@nestjs/common';
 import { ApiOperation, ApiQuery, ApiResponse, ApiTags } from '@nestjs/swagger';
 import type { IStorageService } from './storage.interface';
 
