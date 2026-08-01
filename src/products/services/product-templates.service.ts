@@ -50,7 +50,7 @@ export class ProductTemplatesService {
       ...(query.featured !== undefined
         ? { where: { is_featured: query.featured } }
         : {}),
-      order: { [sortField]: sortOrder },
+      order: { [sortField]: sortOrder, variations: { sort_order: 'ASC' } },
       ...(query.limit ? { take: query.limit } : {}),
     });
 
@@ -76,6 +76,7 @@ export class ProductTemplatesService {
         'variations.reviews',
         'variations.reviews.user',
       ],
+      order: { variations: { sort_order: 'ASC' } },
     });
 
     if (!template) {
