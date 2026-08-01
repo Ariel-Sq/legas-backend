@@ -11,7 +11,7 @@ import { AddToCartDto } from './dto/add-to-cart.dto';
 import { UpdateCartItemDto } from './dto/update-cart-item.dto';
 import { ProductVariationsService } from '@app/products/products.service';
 import { rewriteCartItemImageUrls } from '@app/utils/image-url';
-import { v4 as uuidv4 } from 'uuid';
+import { randomUUID as uuidv4 } from 'node:crypto';
 
 const toMoney = (n: number | string) => Math.round(Number(n) * 100) / 100;
 

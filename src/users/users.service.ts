@@ -9,7 +9,7 @@ import { Repository } from 'typeorm';
 import { User, AuthProvider } from './entities/user.entity';
 import { CreateUserDto } from './dto/create-user.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
-import { v4 as uuidv4 } from 'uuid';
+import { randomUUID as uuidv4 } from 'node:crypto';
 
 @Injectable()
 export class UsersService {
