@@ -29,10 +29,16 @@ import { THROTTLE_LIMIT, THROTTLE_TTL } from '@app/utils/environments';
         username: configService.get<string>('DB_USERNAME'),
         password: configService.get<string>('DB_PASSWORD'),
         database: configService.get<string>('DB_NAME'),
+        // Managed Postgres providers (Neon, Supabase pooler) require TLS.
+        ...(configService.get<string>('DB_SSL') === 'true'
+          ? { ssl: { rejectUnauthorized: false } }
+          : {}),
         autoLoadEntities: true,
         synchronize: false,
         migrations: ['dist/database/migrations/*.js'],
-        migrationsRun: true,
+        // Serverless note: this runs on every cold start; it is a no-op when
+        // the schema is up to date. Set MIGRATIONS_RUN=false to disable.
+        migrationsRun: configService.get<string>('MIGRATIONS_RUN') !== 'false',
         // Verbose SQL only when LOG_SQL=1; otherwise just errors/warnings.
         logging:
           process.env.LOG_SQL === '1' ? 'all' : (['error', 'warn'] as const),
