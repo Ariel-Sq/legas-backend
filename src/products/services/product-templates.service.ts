@@ -5,7 +5,7 @@ import {
   Logger,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { FindOptionsSelect, In, Repository } from 'typeorm';
 import { ProductTemplate } from '../entities/product-template.entity';
 import { ProductVariation } from '../entities/product-variation.entity';
 import { Category } from '../../categories/entities/category.entity';
@@ -39,6 +39,32 @@ export class ProductTemplatesService {
       | 'ASC'
       | 'DESC';
 
+    const where =
+      query.featured !== undefined
+        ? { is_featured: query.featured }
+        : undefined;
+
+    // `take` combined with joined relations applies the LIMIT to the joined
+    // rows (a template with 3 variations eats 3 slots), so resolve the page
+    // of template ids first — no relations, LIMIT works on entities — and
+    // then load those ids with the full relation tree.
+    let idFilter: { id: ReturnType<typeof In<string>> } | undefined;
+    if (query.limit) {
+      const idRows = await this.productTemplatesRepository.find({
+        // The sort column must be selected too: eager relations force a
+        // DISTINCT subquery and its ORDER BY can only reference selected
+        // columns.
+        select: {
+          id: true,
+          [sortField]: true,
+        } as FindOptionsSelect<ProductTemplate>,
+        ...(where ? { where } : {}),
+        order: { [sortField]: sortOrder },
+        take: query.limit,
+      });
+      idFilter = { id: In(idRows.map((r) => r.id)) };
+    }
+
     const res = await this.productTemplatesRepository.find({
       relations: [
         'categories',
@@ -47,11 +73,8 @@ export class ProductTemplatesService {
         'variations.reviews',
         'variations.reviews.user',
       ],
-      ...(query.featured !== undefined
-        ? { where: { is_featured: query.featured } }
-        : {}),
+      ...(idFilter ? { where: idFilter } : where ? { where } : {}),
       order: { [sortField]: sortOrder, variations: { sort_order: 'ASC' } },
-      ...(query.limit ? { take: query.limit } : {}),
     });
 
     // Transform image URLs to full URLs
