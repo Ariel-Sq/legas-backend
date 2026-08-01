@@ -15,6 +15,10 @@ export default new DataSource({
   username: DB_USERNAME,
   password: DB_PASSWORD,
   database: DB_NAME,
+  // Managed Postgres providers (Neon, Supabase pooler) require TLS.
+  ...(process.env.DB_SSL === 'true'
+    ? { ssl: { rejectUnauthorized: false } }
+    : {}),
   synchronize: false,
   entities: ['src/**/*.entity.ts'],
   migrations: ['src/database/migrations/*.ts'],
