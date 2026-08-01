@@ -13,10 +13,12 @@ interface HasVariations {
   productVariation?: VariationLike | null;
 }
 
+// Path-style (no query string) so Next.js image optimization accepts the
+// URL — remotePatterns with an omitted `search` reject query strings.
 export function publicImageUrl(image: ImageLike | undefined | null): string {
   if (!image) return '';
   if (image.path) {
-    return `${BACKEND_URL}/api/images?path=${image.path}`;
+    return `${BACKEND_URL}/api/images/${image.path}`;
   }
   return image.url ?? '';
 }
@@ -27,7 +29,7 @@ export function rewriteVariationImageUrls(
   if (!variation?.images) return;
   for (const image of variation.images) {
     if (image.path) {
-      image.url = `${BACKEND_URL}/api/images?path=${image.path}`;
+      image.url = publicImageUrl(image);
     }
   }
 }

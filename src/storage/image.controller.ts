@@ -2,6 +2,7 @@ import {
   Controller,
   Get,
   BadRequestException,
+  Param,
   Res,
   Query,
 } from '@nestjs/common';
@@ -24,6 +25,28 @@ export class ImageController {
     private readonly storageService: IStorageService,
     private readonly cacheService: CacheService,
   ) {}
+
+  /**
+   * Path-style variant (`/api/images/products/legas/x.jpg`) — preferred:
+   * Next.js image optimization rejects remote URLs with query strings
+   * unless `search` is configured, so URL builders emit this form.
+   */
+  @Get('*imagePath')
+  @ApiOperation({
+    summary: 'Get image file by path',
+    description: 'Returns the image file directly (path-style URL)',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Image file returned successfully',
+  })
+  async getImageByPath(
+    @Param('imagePath') imagePath: string | string[],
+    @Res() res: any,
+  ): Promise<void> {
+    const path = Array.isArray(imagePath) ? imagePath.join('/') : imagePath;
+    return this.getImage(path, res);
+  }
 
   @Get()
   @ApiOperation({

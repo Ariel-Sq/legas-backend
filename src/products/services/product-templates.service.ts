@@ -81,7 +81,7 @@ export class ProductTemplatesService {
     res.forEach((template) => {
       template.variations.forEach((variation) => {
         variation.images.forEach((image) => {
-          image.url = `${BACKEND_URL}/api/images?path=${image.path}`;
+          image.url = `${BACKEND_URL}/api/images/${image.path}`;
         });
       });
     });
@@ -109,7 +109,7 @@ export class ProductTemplatesService {
     // Transform image URLs to full URLs
     template.variations.forEach((variation) => {
       variation.images.forEach((image) => {
-        image.url = `${BACKEND_URL}/api/images?path=${image.path}`;
+        image.url = `${BACKEND_URL}/api/images/${image.path}`;
       });
     });
 
