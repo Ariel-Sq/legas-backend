@@ -65,7 +65,7 @@ Swagger is at `/api/docs` (JSON at `/api/docs-json`), with `x-user-id` registere
 
 Controllers consume this through the `@UserInfo()` param decorator (`src/auth/decorators/user-info.decorator.ts`), which returns `{ userId?, sessionId?, isAuthenticated, isAnonymous }`. **Never read auth headers or session cookies directly in controllers** — use the decorator so the abstraction holds.
 
-`AdminGuard` (`src/auth/guards/admin.guard.ts`) enforces `isAuthenticated` and then loads the user from the DB to check `role === OWNER || ADMIN` (403 otherwise). `AuthenticatedGuard` is the lighter "must be logged in" check.
+`AuthenticatedGuard` is the "must be logged in" check. There are intentionally NO admin endpoints (and no `AdminGuard`): administrative operations (orders, product CRUD, review moderation, users) are performed via chat (Claude) directly against the database — see the decision note in the frontend's TODO.md.
 
 ### Cart / session continuity
 
@@ -88,10 +88,6 @@ Templates have `eager: true` on `variations`, and variations cascade from templa
 ### Storage abstraction
 
 `StorageModule` provides a `'StorageService'` token bound at module-construction time to either `StorageServiceSupabase` or `StorageServiceLocal` based on `STORAGE_TYPE` env (`SUPABASE` | `LOCAL`). Always inject via `@Inject('StorageService') storage: IStorageService` — don't import the concrete classes.
-
-### Development module
-
-`DevelopmentModule` exposes `POST /api/development/clear-database` which truncates all tables in FK-dependency order and wipes storage. It self-disables when `NODE_ENV === 'production'` — but the check is the only guard, so do not expose this controller in any prod-like environment.
 
 ### Path aliases
 

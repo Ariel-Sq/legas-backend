@@ -12,7 +12,6 @@ import { PaymentsModule } from '@app/payments/payments.module';
 import { CacheModule } from '@app/cache/cache.module';
 import { CategoriesModule } from '@app/categories/categories.module';
 import { ReviewsModule } from '@app/reviews/reviews.module';
-import { DevelopmentModule } from '@app/development/development.module';
 import { WishlistModule } from '@app/wishlist/wishlist.module';
 import { AuthModule } from '@app/auth/auth.module';
 import { THROTTLE_LIMIT, THROTTLE_TTL } from '@app/utils/environments';
@@ -63,7 +62,6 @@ import { THROTTLE_LIMIT, THROTTLE_TTL } from '@app/utils/environments';
     CacheModule,
     CategoriesModule,
     ReviewsModule,
-    DevelopmentModule,
     WishlistModule,
     AuthModule,
   ],
