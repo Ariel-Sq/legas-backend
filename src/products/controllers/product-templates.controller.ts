@@ -1,5 +1,5 @@
-import { Controller, Get, Query } from '@nestjs/common';
-import { ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
+import { Controller, Get, Param, Query } from '@nestjs/common';
+import { ApiOperation, ApiParam, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { ProductTemplatesService } from '../services/product-templates.service';
 import { ListProductTemplatesQueryDto } from '../dto/list-product-templates-query.dto';
 
@@ -21,5 +21,18 @@ export class ProductTemplatesController {
   })
   findAll(@Query() query: ListProductTemplatesQueryDto) {
     return this.productTemplatesService.findAll(query);
+  }
+
+  @Get('by-slug/:slugOrId')
+  @ApiOperation({
+    summary: 'Get one product template by slug or uuid',
+    description:
+      'Single-template lookup for the product detail page — avoids fetching the whole catalogue.',
+  })
+  @ApiParam({ name: 'slugOrId', description: 'Template slug or uuid' })
+  @ApiResponse({ status: 200, description: 'Product template found' })
+  @ApiResponse({ status: 404, description: 'Not found' })
+  findBySlug(@Param('slugOrId') slugOrId: string) {
+    return this.productTemplatesService.findOneBySlugOrId(slugOrId);
   }
 }

@@ -65,14 +65,11 @@ export class ProductTemplatesService {
       idFilter = { id: In(idRows.map((r) => r.id)) };
     }
 
+    // The LIST endpoint deliberately omits reviews: they were ~half the
+    // payload, and no list consumer uses them (the product page loads
+    // reviews from /api/reviews; rating summaries come from /api/ratings).
     const res = await this.productTemplatesRepository.find({
-      relations: [
-        'categories',
-        'variations',
-        'variations.priceTiers',
-        'variations.reviews',
-        'variations.reviews.user',
-      ],
+      relations: ['categories', 'variations', 'variations.priceTiers'],
       ...(idFilter ? { where: idFilter } : where ? { where } : {}),
       order: { [sortField]: sortOrder, variations: { sort_order: 'ASC' } },
     });
@@ -87,6 +84,37 @@ export class ProductTemplatesService {
     });
 
     return res;
+  }
+
+  /**
+   * Resolve a single template by slug (canonical product URLs) or by uuid
+   * (legacy links). Loads the detail-page relation set — no reviews, the
+   * product page fetches those from /api/reviews.
+   */
+  async findOneBySlugOrId(slugOrId: string): Promise<ProductTemplate> {
+    const isUuid =
+      /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(
+        slugOrId,
+      );
+    const template = await this.productTemplatesRepository.findOne({
+      where: isUuid ? { id: slugOrId } : { slug: slugOrId },
+      relations: ['categories', 'variations', 'variations.priceTiers'],
+      order: { variations: { sort_order: 'ASC' } },
+    });
+
+    if (!template) {
+      throw new NotFoundException(
+        `Product template "${slugOrId}" not found`,
+      );
+    }
+
+    template.variations.forEach((variation) => {
+      variation.images.forEach((image) => {
+        image.url = `${BACKEND_URL}/api/images/${image.path}`;
+      });
+    });
+
+    return template;
   }
 
   async findOne(id: string): Promise<ProductTemplate> {
