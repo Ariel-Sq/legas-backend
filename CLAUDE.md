@@ -60,12 +60,12 @@ Swagger is at `/api/docs` (JSON at `/api/docs-json`), with `x-user-id` registere
 
 `AuthMiddleware` (`src/auth/middleware/auth.middleware.ts`) is the single source of truth for user identity and runs **globally** before any controller. It sets `req.user` to one of:
 
-- **Authenticated**: `x-user-id` header present → `{ id: <header value>, type: 'authenticated', isAuthenticated: true }`. The header value is trusted as-is — actual identity verification is expected to happen at an upstream gateway/provider. There is no JWT/session check inside this service.
-- **Anonymous**: no header → reads `sessionId` from cookie (`sessionId`) or `x-session-id` header; if missing, mints a UUID and sets the cookie (`httpOnly`, 30-day `maxAge`). `req.user.id` becomes the session ID.
+- **Authenticated**: valid `Authorization: Bearer <JWT>` header → `{ id: <jwt sub>, type: 'authenticated', isAuthenticated: true }`. The JWT is issued by this service (`src/auth/jwt.util.ts`, signed with `JWT_SECRET`) after `POST /api/auth/google` verified a Google `id_token`. A present-but-invalid token degrades to anonymous; route guards decide whether auth is required. There is no trusted `x-user-id` header.
+- **Anonymous**: no/invalid Bearer → reads `sessionId` from cookie (`sessionId`) or `x-session-id` header; if missing, mints a UUID and sets the cookie (`httpOnly`, 30-day `maxAge`). `req.user.id` becomes the session ID.
 
-Controllers consume this through the `@UserInfo()` param decorator (`src/auth/decorators/user-info.decorator.ts`), which returns `{ userId?, sessionId?, isAuthenticated, isAnonymous }`. **Never read `x-user-id` or session cookies directly in controllers** — use the decorator so the abstraction holds.
+Controllers consume this through the `@UserInfo()` param decorator (`src/auth/decorators/user-info.decorator.ts`), which returns `{ userId?, sessionId?, isAuthenticated, isAnonymous }`. **Never read auth headers or session cookies directly in controllers** — use the decorator so the abstraction holds.
 
-`AdminGuard` (`src/auth/guards/admin.guard.ts`) enforces `isAuthenticated` and then loads the user from the DB to check `role === OWNER || ADMIN` (403 otherwise). `AuthenticatedGuard` is the lighter "must be logged in" check. No JWT issuance lives here.
+`AdminGuard` (`src/auth/guards/admin.guard.ts`) enforces `isAuthenticated` and then loads the user from the DB to check `role === OWNER || ADMIN` (403 otherwise). `AuthenticatedGuard` is the lighter "must be logged in" check.
 
 ### Cart / session continuity
 

@@ -32,14 +32,19 @@ This document outlines planned enhancements and features for the Ecommerce backe
 
 - [ ] Native `q` / `page` / `limit` support on `/api/product-templates`.
       Today the frontend's `getShopProductsPage` fetches every template
-      and filters + paginates in-process. Works fine for ~12 SKUs but
-      will need real query params once the catalogue grows.
+      and filters + paginates in-process. Works fine for ~50 SKUs but
+      each /shop render pulls the full catalogue (with variations and
+      reviews) — on serverless + Neon this is the main perf cost.
 - [ ] Implement certificate authentication between the backend and the
-      frontend. Header signature with the certificate.
-- [ ] Lock down `/api/users/oauth` and `/api/users/by-id/:id` so only the
-      frontend can call them (shared secret header is fine for now).
-- [ ] Check AuthMiddleware, UserInfo and AuthenticatedGuard to ensure
-      proper user authentication flow.
+      frontend. Header signature with the certificate. (Optional
+      hardening — per-user auth is already JWT-based.)
+- [x] ~~Lock down `/api/users/oauth` and `/api/users/by-id/:id`~~ —
+      resolved by the auth refactor: those endpoints no longer exist.
+      OAuth provisioning goes through POST /api/auth/google (verifies the
+      Google id_token) and user reads live under /api/admin/users.
+- [x] ~~Check AuthMiddleware / UserInfo / AuthenticatedGuard~~ — identity
+      now comes solely from a backend-signed Bearer JWT; the trusted
+      x-user-id header is gone.
 
 ## Nice to have
 
