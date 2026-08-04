@@ -3,6 +3,7 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import { PaymentsController } from './payments.controller';
 import { OrdersController } from './orders.controller';
 import { AdminOrdersController } from './admin-orders.controller';
+import { CronController } from './cron.controller';
 import { PaymentsService } from './payments.service';
 import { ProductsModule } from '@app/products/products.module';
 import { UsersModule } from '@app/users/users.module';
@@ -20,7 +21,12 @@ import { OrderPaymentDetail } from './entities/order-payment-detail.entity';
     UsersModule,
     CartModule,
   ],
-  controllers: [PaymentsController, OrdersController, AdminOrdersController],
+  controllers: [
+    PaymentsController,
+    OrdersController,
+    AdminOrdersController,
+    CronController,
+  ],
   providers: [PaymentsService, OrderService],
   exports: [OrderService, TypeOrmModule],
 })

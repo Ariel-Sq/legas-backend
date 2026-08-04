@@ -79,6 +79,26 @@ export class OrderService {
     return savedOrder;
   }
 
+  /**
+   * Orders still awaiting payment older than `maxAgeMinutes` — their
+   * reserved stock is considered an expired hold (buyer abandoned the MP
+   * checkout). The age is computed against the DATABASE clock: `createdAt`
+   * is a naive timestamp and passing a JS Date would serialize it in the
+   * app's local timezone, skewing the cutoff.
+   */
+  async findExpiredProcessingPayment(maxAgeMinutes: number): Promise<Order[]> {
+    return this.orderRepository
+      .createQueryBuilder('order')
+      .select(['order.id'])
+      .where('order.status = :status', {
+        status: OrderStatus.PROCESSING_PAYMENT,
+      })
+      .andWhere('order.createdAt < now() - make_interval(mins => :mins)', {
+        mins: maxAgeMinutes,
+      })
+      .getMany();
+  }
+
   async findById(id: string): Promise<Order | null> {
     return this.orderRepository.findOne({
       where: { id },

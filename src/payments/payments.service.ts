@@ -28,6 +28,16 @@ interface PreferenceItem {
  */
 export const CARD_SURCHARGE_RATE = 0.2;
 
+/**
+ * Stock-hold lifecycle. Checkout reserves stock BEFORE payment, so an
+ * abandoned MP checkout holds stock hostage. The MP preference expires at
+ * CHECKOUT_EXPIRATION_MINUTES (MP stops accepting the payment), and the
+ * hold is released after STOCK_HOLD_RELEASE_MINUTES (> expiration, so a
+ * payment can never land on an already-released order).
+ */
+export const CHECKOUT_EXPIRATION_MINUTES = 60;
+export const STOCK_HOLD_RELEASE_MINUTES = 90;
+
 @Injectable()
 export class PaymentsService {
   private client: MercadoPagoConfig;
@@ -68,6 +78,14 @@ export class PaymentsService {
     if (!cart.items || cart.items.length === 0) {
       throw new BadRequestException('Cart is empty');
     }
+
+    // Lazy hold release: before reserving new stock, return the stock of
+    // abandoned checkouts. Serverless has no background workers, so this —
+    // plus the daily cron (GET /api/cron/release-stock) — keeps expired
+    // holds from starving the catalogue. Never blocks the checkout.
+    await this.releaseExpiredCheckouts().catch((err) =>
+      this.logger.warn(`releaseExpiredCheckouts failed: ${err.message}`),
+    );
 
     const checkoutItems: CheckoutItemDto[] = cart.items.map((item) => ({
       id: item.productVariationId,
@@ -112,8 +130,15 @@ export class PaymentsService {
         cart.items.map(this.mapCartItemToPreferenceItem.bind(this)),
       );
 
+      const expiresAt = new Date(
+        Date.now() + CHECKOUT_EXPIRATION_MINUTES * 60_000,
+      );
       const preferenceData: PreferenceRequest = {
         items,
+        // MP stops accepting this payment after the stock hold window, so
+        // a released hold can never be paid afterwards.
+        expires: true,
+        expiration_date_to: expiresAt.toISOString().replace('Z', '+00:00'),
         back_urls: {
           success: this.configService.getOrThrow<string>(
             'MERCADO_PAGO_SUCCESS_URL',
@@ -148,6 +173,26 @@ export class PaymentsService {
   }
 
   /**
+   * Release the stock held by abandoned checkouts: orders still in
+   * PROCESSING_PAYMENT older than STOCK_HOLD_RELEASE_MINUTES get their
+   * stock restored and are cancelled. Returns how many were released.
+   * Idempotent and safe to run concurrently (compensation locks rows and
+   * re-checks status inside the transaction).
+   */
+  async releaseExpiredCheckouts(): Promise<number> {
+    const expired = await this.orderService.findExpiredProcessingPayment(
+      STOCK_HOLD_RELEASE_MINUTES,
+    );
+    for (const order of expired) {
+      await this.compensateFailedCheckout(order.id);
+    }
+    if (expired.length > 0) {
+      this.logger.log(`Released ${expired.length} expired stock hold(s)`);
+    }
+    return expired.length;
+  }
+
+  /**
    * Restore stock and mark the order CANCELLED. Idempotent — repeated calls
    * after the order has already been compensated are no-ops.
    */
@@ -157,13 +202,25 @@ export class PaymentsService {
       this.logger.warn(`compensate: order ${orderId} not found`);
       return;
     }
-    if (order.status === OrderStatus.CANCELLED) {
+    if (order.status !== OrderStatus.PROCESSING_PAYMENT) {
       return;
     }
 
-    await this.dataSource.transaction(async (manager) => {
+    const compensated = await this.dataSource.transaction(async (manager) => {
       const ids = order.items.map((i) => i.productVariationId);
       await this.productsService.lockVariationsForUpdate(manager, ids);
+
+      // Claim the compensation atomically: only the caller that flips the
+      // order out of PROCESSING_PAYMENT restores the stock. Protects
+      // against concurrent release (lazy + cron) double-restoring, and
+      // against cancelling an order a webhook just marked as paid.
+      const claimed = await manager
+        .getRepository(Order)
+        .update(
+          { id: orderId, status: OrderStatus.PROCESSING_PAYMENT },
+          { status: OrderStatus.CANCELLED },
+        );
+      if (!claimed.affected) return false;
 
       for (const item of order.items) {
         await this.productsService.updateStockWithManager(
@@ -172,11 +229,11 @@ export class PaymentsService {
           item.quantity,
         );
       }
-      await manager
-        .getRepository(Order)
-        .update(orderId, { status: OrderStatus.CANCELLED });
+      return true;
     });
-    this.logger.log(`Compensated stock + cancelled order ${orderId}`);
+    if (compensated) {
+      this.logger.log(`Compensated stock + cancelled order ${orderId}`);
+    }
   }
 
   private async mapCartItemToPreferenceItem(

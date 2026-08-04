@@ -4,6 +4,7 @@
   "outputDirectory": ".",
   "framework": null,
   "rewrites": [{ "source": "/(.*)", "destination": "/api/index" }],
+  "crons": [{ "path": "/api/cron/release-stock", "schedule": "0 6 * * *" }],
   "functions": {
     "api/index.js": {
       "includeFiles": "dist/**",

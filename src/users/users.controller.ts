@@ -1,7 +1,6 @@
-import { Body, Controller, Patch, Post, UseGuards } from '@nestjs/common';
+import { Body, Controller, Patch, UseGuards } from '@nestjs/common';
 import { ApiOperation, ApiResponse } from '@nestjs/swagger';
 import { UsersService } from './users.service';
-import { CreateUserDto } from './dto/create-user.dto';
 import { UpdateProfileDto } from './dto/update-profile.dto';
 import { User } from './entities/user.entity';
 import { AuthenticatedGuard } from '@app/auth/guards/authenticated.guard';
@@ -9,22 +8,15 @@ import { UserInfo } from '@app/auth/decorators/user-info.decorator';
 import type { UserInfoType } from '@app/auth/decorators/user-info.decorator';
 
 /**
- * Public registration + self-service profile. OAuth provisioning happens in
- * AuthController (POST /auth/google); reads/updates of other users live in
- * AdminUsersController under /api/admin/users.
+ * Self-service profile. There is intentionally NO public registration
+ * endpoint: users are provisioned exclusively through Google sign-in
+ * (POST /auth/google verifies the id_token and creates the user).
+ * Reads/updates of other users live in AdminUsersController under
+ * /api/admin/users.
  */
 @Controller('users')
 export class UsersController {
   constructor(private readonly usersService: UsersService) {}
-
-  @Post()
-  @ApiOperation({ summary: 'Register a new user (public)' })
-  @ApiResponse({ status: 201, description: 'User registered.', type: User })
-  @ApiResponse({ status: 400, description: 'Validation error.' })
-  @ApiResponse({ status: 409, description: 'Email already exists.' })
-  async create(@Body() createUserDto: CreateUserDto): Promise<User> {
-    return this.usersService.create(createUserDto);
-  }
 
   @Patch('me')
   @UseGuards(AuthenticatedGuard)

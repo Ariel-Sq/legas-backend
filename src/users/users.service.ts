@@ -2,14 +2,11 @@ import {
   Injectable,
   NotFoundException,
   ConflictException,
-  BadRequestException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { User, AuthProvider } from './entities/user.entity';
-import { CreateUserDto } from './dto/create-user.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
-import { randomUUID as uuidv4 } from 'node:crypto';
 
 @Injectable()
 export class UsersService {
@@ -56,33 +53,6 @@ export class UsersService {
       .where('user.email = :email', { email })
       .addSelect('user.password')
       .getOne();
-  }
-
-  async create(createUserDto: CreateUserDto): Promise<User> {
-    const { email } = createUserDto;
-
-    // Check if user with this email already exists
-    const existingUser = await this.findByEmail(email);
-    if (existingUser) {
-      throw new ConflictException(`User with email ${email} already exists`);
-    }
-
-    // Public registration is always LOCAL — password required.
-    if (!createUserDto.password) {
-      throw new BadRequestException(
-        'Password is required for local authentication',
-      );
-    }
-
-    // Generate verification token for email verification
-    const verificationToken = uuidv4();
-
-    const user = this.usersRepository.create({
-      ...createUserDto,
-      verificationToken,
-    });
-
-    return this.usersRepository.save(user);
   }
 
   /**
