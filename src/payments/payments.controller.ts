@@ -80,6 +80,7 @@ export class PaymentsController {
         customerEmail: body.customerEmail,
         customerPhone: body.customerPhone,
       },
+      body.paymentMethod,
     );
   }
 

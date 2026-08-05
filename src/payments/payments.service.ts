@@ -13,6 +13,11 @@ import { OrderService } from './services/order.service';
 import { CartService } from '@app/cart/cart.service';
 import { Cart } from '@app/cart/entities/cart.entity';
 import { Order, OrderStatus } from './entities/order.entity';
+import {
+  DEFAULT_PAYMENT_METHOD,
+  PAYMENT_METHOD_CONFIG,
+  type CheckoutPaymentMethod,
+} from './payment-method.config';
 
 interface PreferenceItem {
   id: string;
@@ -22,13 +27,8 @@ interface PreferenceItem {
   currency_id?: string;
 }
 
-/**
- * Online payment (MercadoPago) surcharge over the catalogue
- * (cash/transfer) prices — applies to every MP payment method (card,
- * account money, etc.), since the whole checkout goes through MP.
- * Keep in sync with the frontend constant in components/checkout-client.tsx.
- */
-export const MP_SURCHARGE_RATE = 0.2;
+// Surcharge rates and per-method MP restrictions live in
+// payment-method.config.ts (account_money +10%, credit_card +20%).
 
 /**
  * Stock-hold lifecycle. Checkout reserves stock BEFORE payment, so an
@@ -73,7 +73,9 @@ export class PaymentsService {
     userId?: string,
     sessionId?: string,
     contact: { customerEmail?: string; customerPhone?: string } = {},
+    paymentMethod: CheckoutPaymentMethod = DEFAULT_PAYMENT_METHOD,
   ) {
+    const methodConfig = PAYMENT_METHOD_CONFIG[paymentMethod];
     if (userId) {
       await this.usersService.findById(userId);
     }
@@ -94,13 +96,13 @@ export class PaymentsService {
       quantity: item.quantity,
     }));
     // Catalogue prices are cash/transfer prices. Online checkout goes through
-    // MercadoPago (card), which carries a 20% surcharge — applied to the order
-    // total and to every MP preference item so the charge matches the summary
-    // shown in the frontend. Keep in sync with MP_SURCHARGE_RATE in the
-    // frontend (components/checkout-client.tsx).
+    // MercadoPago, which carries a method-dependent surcharge — applied to
+    // the order total and to every MP preference item so the charge matches
+    // the summary shown in the frontend (see payment-method.config.ts).
     const totalAmount =
-      Math.round(Number(cart.totalPrice) * (1 + MP_SURCHARGE_RATE) * 100) /
-      100;
+      Math.round(
+        Number(cart.totalPrice) * (1 + methodConfig.surchargeRate) * 100,
+      ) / 100;
 
     // Phase 1 — atomic reserve + order create (no network calls inside).
     const order = await this.dataSource.transaction(async (manager) => {
@@ -129,7 +131,9 @@ export class PaymentsService {
     // Phase 2 — call MercadoPago after COMMIT. If it fails, compensate.
     try {
       const items = await Promise.all(
-        cart.items.map(this.mapCartItemToPreferenceItem.bind(this)),
+        cart.items.map((item) =>
+          this.mapCartItemToPreferenceItem(item, methodConfig.surchargeRate),
+        ),
       );
 
       const expiresAt = new Date(
@@ -137,6 +141,13 @@ export class PaymentsService {
       );
       const preferenceData: PreferenceRequest = {
         items,
+        // Restrict the MP screen to the methods matching the chosen
+        // surcharge, and cap installments (3 for credit).
+        payment_methods: {
+          excluded_payment_types: methodConfig.excludedPaymentTypes,
+          installments: methodConfig.maxInstallments,
+          default_installments: 1,
+        },
         // MP stops accepting this payment after the stock hold window, so
         // a released hold can never be paid afterwards.
         expires: true,
@@ -240,6 +251,7 @@ export class PaymentsService {
 
   private async mapCartItemToPreferenceItem(
     cartItem: any,
+    surchargeRate: number,
   ): Promise<PreferenceItem> {
     const product = await this.productsService.findByIdWithDetails(
       cartItem.productVariationId,
@@ -255,11 +267,11 @@ export class PaymentsService {
       id: cartItem.productVariationId.toString(),
       quantity: cartItem.quantity,
       title: product.name,
-      // MP surcharge — see createCheckoutPreferenceFromCart.
+      // Method-dependent surcharge — see createCheckoutPreferenceFromCart.
       unit_price:
         Math.round(
           (Number(cartItem.price) / cartItem.quantity) *
-            (1 + MP_SURCHARGE_RATE) *
+            (1 + surchargeRate) *
             100,
         ) / 100,
       currency_id: 'ARS',
