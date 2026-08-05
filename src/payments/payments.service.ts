@@ -23,10 +23,12 @@ interface PreferenceItem {
 }
 
 /**
- * Card payment surcharge over the catalogue (cash/transfer) prices.
+ * Online payment (MercadoPago) surcharge over the catalogue
+ * (cash/transfer) prices — applies to every MP payment method (card,
+ * account money, etc.), since the whole checkout goes through MP.
  * Keep in sync with the frontend constant in components/checkout-client.tsx.
  */
-export const CARD_SURCHARGE_RATE = 0.2;
+export const MP_SURCHARGE_RATE = 0.2;
 
 /**
  * Stock-hold lifecycle. Checkout reserves stock BEFORE payment, so an
@@ -94,10 +96,10 @@ export class PaymentsService {
     // Catalogue prices are cash/transfer prices. Online checkout goes through
     // MercadoPago (card), which carries a 20% surcharge — applied to the order
     // total and to every MP preference item so the charge matches the summary
-    // shown in the frontend. Keep in sync with CARD_SURCHARGE_RATE in the
+    // shown in the frontend. Keep in sync with MP_SURCHARGE_RATE in the
     // frontend (components/checkout-client.tsx).
     const totalAmount =
-      Math.round(Number(cart.totalPrice) * (1 + CARD_SURCHARGE_RATE) * 100) /
+      Math.round(Number(cart.totalPrice) * (1 + MP_SURCHARGE_RATE) * 100) /
       100;
 
     // Phase 1 — atomic reserve + order create (no network calls inside).
@@ -253,11 +255,11 @@ export class PaymentsService {
       id: cartItem.productVariationId.toString(),
       quantity: cartItem.quantity,
       title: product.name,
-      // Card surcharge — see createCheckoutPreferenceFromCart.
+      // MP surcharge — see createCheckoutPreferenceFromCart.
       unit_price:
         Math.round(
           (Number(cartItem.price) / cartItem.quantity) *
-            (1 + CARD_SURCHARGE_RATE) *
+            (1 + MP_SURCHARGE_RATE) *
             100,
         ) / 100,
       currency_id: 'ARS',
