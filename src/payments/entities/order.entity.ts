@@ -53,6 +53,13 @@ export class Order {
   @Column({ type: 'varchar', nullable: true })
   customerPhone: string | null;
 
+  /**
+   * MercadoPago preference id — lets a superseded checkout expire its MP
+   * preference so the old payment link stops being payable.
+   */
+  @Column({ type: 'varchar', nullable: true })
+  preferenceId: string | null;
+
   @OneToMany(() => OrderItem, (item) => item.order, { cascade: true })
   items: OrderItem[];
 

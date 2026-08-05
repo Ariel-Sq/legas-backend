@@ -83,6 +83,15 @@ export class PaymentsService {
       throw new BadRequestException('Cart is empty');
     }
 
+    // A shopper has at most one live checkout: starting a new one (e.g.
+    // switching payment method) supersedes their previous pending orders —
+    // stock back, order cancelled, old MP preference expired so it can't
+    // be paid afterwards. Without this, toggling methods kept stacking
+    // stock holds for 90 minutes each.
+    await this.supersedePendingCheckouts(userId, sessionId).catch((err) =>
+      this.logger.warn(`supersedePendingCheckouts failed: ${err.message}`),
+    );
+
     // Lazy hold release: before reserving new stock, return the stock of
     // abandoned checkouts. Serverless has no background workers, so this —
     // plus the daily cron (GET /api/cron/release-stock) — keeps expired
@@ -173,6 +182,16 @@ export class PaymentsService {
 
       const preference = new Preference(this.client);
       const response = await preference.create({ body: preferenceData });
+      // Remember the preference so a later supersede can expire it in MP.
+      if (response.id) {
+        await this.orderService
+          .setPreferenceId(order.id, response.id)
+          .catch((err) =>
+            this.logger.warn(
+              `could not store preferenceId for order ${order.id}: ${err.message}`,
+            ),
+          );
+      }
       return response;
     } catch (error: any) {
       this.logger.error(
@@ -181,6 +200,54 @@ export class PaymentsService {
       await this.compensateFailedCheckout(order.id);
       throw new Error(
         `Failed to create Mercado Pago preference: ${error.message}`,
+      );
+    }
+  }
+
+  /**
+   * Supersede the shopper's own pending checkouts: expire their MP
+   * preferences (best effort — the payment link stops working) and
+   * compensate the orders (stock back, CANCELLED).
+   */
+  private async supersedePendingCheckouts(
+    userId?: string,
+    sessionId?: string,
+  ): Promise<void> {
+    const pending = await this.orderService.findPendingForOwner(
+      userId,
+      sessionId,
+    );
+    for (const order of pending) {
+      if (order.preferenceId) {
+        await this.expirePreference(order.preferenceId);
+      }
+      await this.compensateFailedCheckout(order.id);
+    }
+    if (pending.length > 0) {
+      this.logger.log(
+        `Superseded ${pending.length} pending checkout(s) for ${userId ?? sessionId}`,
+      );
+    }
+  }
+
+  /** Best-effort: make an MP preference unpayable right now. */
+  private async expirePreference(preferenceId: string): Promise<void> {
+    try {
+      const preference = new Preference(this.client);
+      await preference.update({
+        id: preferenceId,
+        // Partial update: MP only touches the fields sent, but the SDK type
+        // demands the full PreferenceRequest (items included) — cast around it.
+        updatePreferenceRequest: {
+          expires: true,
+          expiration_date_to: new Date(Date.now() + 1000)
+            .toISOString()
+            .replace('Z', '+00:00'),
+        } as unknown as PreferenceRequest,
+      });
+    } catch (error: any) {
+      this.logger.warn(
+        `could not expire preference ${preferenceId}: ${error.message}`,
       );
     }
   }

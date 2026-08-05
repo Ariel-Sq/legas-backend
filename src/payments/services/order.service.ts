@@ -99,6 +99,34 @@ export class OrderService {
       .getMany();
   }
 
+  /**
+   * The shopper's own in-flight checkouts. A shopper has at most one live
+   * checkout: starting a new one supersedes these (stock back, cancelled,
+   * MP preference expired).
+   */
+  async findPendingForOwner(
+    userId?: string,
+    sessionId?: string,
+  ): Promise<Order[]> {
+    if (!userId && !sessionId) return [];
+    const qb = this.orderRepository
+      .createQueryBuilder('order')
+      .select(['order.id', 'order.preferenceId'])
+      .where('order.status = :status', {
+        status: OrderStatus.PROCESSING_PAYMENT,
+      });
+    if (userId) {
+      qb.andWhere('order.userId = :userId', { userId });
+    } else {
+      qb.andWhere('order.sessionId = :sessionId', { sessionId });
+    }
+    return qb.getMany();
+  }
+
+  async setPreferenceId(orderId: string, preferenceId: string): Promise<void> {
+    await this.orderRepository.update(orderId, { preferenceId });
+  }
+
   async findById(id: string): Promise<Order | null> {
     return this.orderRepository.findOne({
       where: { id },
@@ -194,6 +222,23 @@ export class OrderService {
       const canUpdate =
         !protectedStatuses.includes(order.status) ||
         orderStatus === OrderStatus.REFUNDED;
+
+      // A payment landing on a CANCELLED order means the shopper paid a
+      // preference we already superseded/expired (its stock went back).
+      // Never resurrect it silently — record the payment detail (above)
+      // and scream so it gets manual review + refund via the MP panel.
+      if (
+        order.status === OrderStatus.CANCELLED &&
+        orderStatus === OrderStatus.PAID_PREPARING
+      ) {
+        this.logger.error(
+          `Payment ${paymentData.id} APPROVED on cancelled order ${order.id} — ` +
+            `stock was already restored. Manual review needed: refund via the MP panel ` +
+            `or re-confirm the order and adjust stock.`,
+        );
+        return;
+      }
+
       if (canUpdate) {
         await orderRepo.update(order.id, { status: orderStatus });
       }
