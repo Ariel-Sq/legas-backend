@@ -1,4 +1,4 @@
-import { Body, Controller, Patch, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, Patch, UseGuards } from '@nestjs/common';
 import { ApiOperation, ApiResponse } from '@nestjs/swagger';
 import { UsersService } from './users.service';
 import { UpdateProfileDto } from './dto/update-profile.dto';
@@ -17,6 +17,21 @@ import type { UserInfoType } from '@app/auth/decorators/user-info.decorator';
 @Controller('users')
 export class UsersController {
   constructor(private readonly usersService: UsersService) {}
+
+  @Get('me')
+  @UseGuards(AuthenticatedGuard)
+  @ApiOperation({
+    summary: 'Get the current user’s profile',
+    description:
+      'Authoritative read of the logged-in user. The frontend session ' +
+      'refresh (NextAuth update trigger) uses this to pick up profile ' +
+      'changes without re-login.',
+  })
+  @ApiResponse({ status: 200, type: User })
+  @ApiResponse({ status: 401, description: 'Not authenticated.' })
+  async getMe(@UserInfo() userInfo: UserInfoType): Promise<User> {
+    return this.usersService.findById(userInfo.userId!);
+  }
 
   @Patch('me')
   @UseGuards(AuthenticatedGuard)
