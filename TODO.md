@@ -28,6 +28,23 @@ This document outlines planned enhancements and features for the Ecommerce backe
 - [x] Wishlist module (per-user, AuthenticatedGuard, idempotent POST)
 - [x] PATCH /api/users/me + GET /api/users/by-id/:id
 
+## Ops checklist (admin runs via chat)
+
+- [ ] **Al revisar órdenes, chequear pagos huérfanos**: un pago aprobado
+      sobre una orden cancelada = plata cobrada con stock ya devuelto
+      (checkout superseded/expirado que igual se pagó). El webhook lo
+      registra y loguea error, pero los logs de Vercel Hobby duran ~1h —
+      la señal durable es esta query:
+
+      ```sql
+      SELECT o.id, o."customerEmail", p."transactionId", p."createdAt"
+      FROM orders o JOIN order_payment_details p ON p."orderId" = o.id
+      WHERE o.status = 'cancelled' AND p.status = 'approved';
+      ```
+
+      Si devuelve filas: reembolsar desde el panel de MP o reconfirmar la
+      orden ajustando stock a mano.
+
 ## Next Steps
 
 - [ ] Native `q` / `page` / `limit` support on `/api/product-templates`.
