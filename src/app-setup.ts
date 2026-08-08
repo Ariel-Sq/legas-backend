@@ -24,6 +24,37 @@ export function configureApp(app: INestApplication): void {
   const authMiddleware = new AuthMiddleware();
   app.use(authMiddleware.use.bind(authMiddleware));
 
+  // Frontend-origin gate: when FRONTEND_SHARED_SECRET is set, every route
+  // (except the ones third parties must reach) requires the header the
+  // frontend server attaches (utils/frontend-key.ts). All storefront calls
+  // are server-side, so the secret never reaches a browser. Unset in local
+  // dev → gate off.
+  const frontendKey = process.env.FRONTEND_SHARED_SECRET;
+  if (frontendKey) {
+    const exempt = [
+      '/api/health', // uptime checks
+      '/api/images', // fetched by the Next.js image optimizer
+      '/api/payments/mercadopago/webhook', // MercadoPago servers
+      '/api/cron/', // Vercel Cron (guarded by CRON_SECRET)
+      '/api/docs', // Swagger (read-only docs)
+    ];
+    app.use(
+      (
+        req: { path: string; headers: Record<string, unknown> },
+        res: {
+          status: (code: number) => { json: (body: unknown) => void };
+        },
+        next: () => void,
+      ) => {
+        if (exempt.some((p) => req.path.startsWith(p))) return next();
+        if (req.headers['x-frontend-key'] === frontendKey) return next();
+        res
+          .status(403)
+          .json({ statusCode: 403, message: 'Forbidden', error: 'Forbidden' });
+      },
+    );
+  }
+
   // Set global prefix for all routes
   app.setGlobalPrefix('api');
 

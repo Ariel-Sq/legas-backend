@@ -19,7 +19,10 @@ export class CancellationsController {
     description:
       'Registers the request and returns the trámite code the consumer keeps.',
   })
-  @ApiResponse({ status: 201, description: 'Request registered; code returned.' })
+  @ApiResponse({
+    status: 201,
+    description: 'Request registered; code returned.',
+  })
   async create(@Body() dto: CreateCancellationDto) {
     const request = await this.cancellationsService.create(dto);
     return { code: request.code, createdAt: request.createdAt };

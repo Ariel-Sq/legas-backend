@@ -18,6 +18,8 @@ import {
   PAYMENT_METHOD_CONFIG,
   type CheckoutPaymentMethod,
 } from './payment-method.config';
+import { EmailService } from '@app/notifications/email.service';
+import { orderEmailFor } from '@app/notifications/order-emails';
 
 interface PreferenceItem {
   id: string;
@@ -51,6 +53,7 @@ export class PaymentsService {
     private usersService: UsersService,
     private orderService: OrderService,
     private cartService: CartService,
+    private emailService: EmailService,
     @InjectDataSource()
     private readonly dataSource: DataSource,
   ) {
@@ -422,11 +425,23 @@ export class PaymentsService {
       await this.orderService.updateOrderPayment(order, paymentData);
 
       switch (paymentData.status) {
-        case 'approved':
+        case 'approved': {
           this.logger.log(`Payment ${paymentId} approved.`);
           await this.clearCartAfterPayment(order.userId, order.sessionId);
           // Stock was already decremented at checkout — nothing to do.
+          // Fire-and-forget confirmation email; never blocks the webhook.
+          if (order.customerEmail && order.status !== OrderStatus.CANCELLED) {
+            const email = orderEmailFor(OrderStatus.PAID_PREPARING, order.id);
+            if (email) {
+              void this.emailService.send(
+                order.customerEmail,
+                email.subject,
+                email.text,
+              );
+            }
+          }
           break;
+        }
         case 'pending':
           this.logger.log(`Payment ${paymentId} is pending.`);
           break;

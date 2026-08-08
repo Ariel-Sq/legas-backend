@@ -314,4 +314,24 @@ export class CartService {
     const saved = await this.cartRepository.save(cart);
     return this.withImageUrls(saved);
   }
+
+  /**
+   * Delete anonymous carts untouched for `maxAgeDays` (default matches the
+   * 30-day session cookie). When an anon logs in, cart lookup switches to
+   * userId and the sessionId-keyed cart is orphaned forever — this is the
+   * periodic sweep (daily cron). cart_items cascade on delete. Age compares
+   * against the DB clock (naive timestamp columns + JS Date params skew
+   * across timezones).
+   */
+  async cleanupOrphanAnonymousCarts(maxAgeDays = 30): Promise<number> {
+    const result = await this.cartRepository
+      .createQueryBuilder()
+      .delete()
+      .where('"userId" IS NULL')
+      .andWhere('"updatedAt" < now() - make_interval(days => :days)', {
+        days: maxAgeDays,
+      })
+      .execute();
+    return result.affected ?? 0;
+  }
 }

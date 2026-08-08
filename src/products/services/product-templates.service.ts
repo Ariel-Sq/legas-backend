@@ -103,9 +103,7 @@ export class ProductTemplatesService {
     });
 
     if (!template) {
-      throw new NotFoundException(
-        `Product template "${slugOrId}" not found`,
-      );
+      throw new NotFoundException(`Product template "${slugOrId}" not found`);
     }
 
     template.variations.forEach((variation) => {

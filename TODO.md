@@ -45,6 +45,27 @@ This document outlines planned enhancements and features for the Ecommerce backe
       Si devuelve filas: reembolsar desde el panel de MP o reconfirmar la
       orden ajustando stock a mano.
 
+### Transicionar órdenes (con email + WhatsApp)
+
+Las transiciones de estado se hacen con el script (apuntando DB_* a Neon
+para prod). Actualiza la DB, manda el email al cliente (si hay SMTP
+configurado) e imprime el link de WhatsApp listo para un click:
+
+```bash
+npx ts-node -r tsconfig-paths/register scripts/transition-order.ts <orderId|shortId> <estado>
+# estados: preparing | ready | shipped | delivered | cancelled | refunded
+```
+
+Las plantillas de email y WhatsApp viven en
+`src/notifications/order-emails.ts`. El email de "pago confirmado" sale
+solo desde el webhook de MP cuando el pago se aprueba.
+
+- [ ] Configurar SMTP en prod para que salgan los emails: crear una App
+      Password de Gmail (cuenta con 2FA → myaccount.google.com/apppasswords)
+      y setear `SMTP_USER` (el gmail) y `SMTP_PASS` (la app password) en el
+      proyecto legas-api de Vercel. Sin esto, los emails se saltean con un
+      warn en logs y todo lo demás funciona igual.
+
 ## Next Steps
 
 - [ ] Native `q` / `page` / `limit` support on `/api/product-templates`.
