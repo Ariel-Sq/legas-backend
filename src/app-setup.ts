@@ -36,7 +36,6 @@ export function configureApp(app: INestApplication): void {
       '/api/images', // fetched by the Next.js image optimizer
       '/api/payments/mercadopago/webhook', // MercadoPago servers
       '/api/cron/', // Vercel Cron (guarded by CRON_SECRET)
-      '/api/docs', // Swagger (read-only docs)
     ];
     app.use(
       (
@@ -72,6 +71,11 @@ export function configureApp(app: INestApplication): void {
 
   // Apply global exception filter
   app.useGlobalFilters(new GlobalExceptionFilter());
+
+  // Swagger only outside production: the API surface is not public (the
+  // frontend-origin gate rejects direct calls), so publishing the docs in
+  // prod only helped attackers map the routes.
+  if (process.env.NODE_ENV === 'production') return;
 
   // Swagger configuration
   const config = new DocumentBuilder()
