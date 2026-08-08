@@ -354,9 +354,13 @@ export class ProductVariationsService {
     const result = await manager
       .createQueryBuilder()
       .update(ProductVariation)
-      .set({ stock: () => `stock + (${quantityChange})` })
+      // Parametrized (no string interpolation into SQL): quantityChange is
+      // always a server-computed int today, but a raw literal would become
+      // injectable the day it isn't. `:delta` is reused in the guard below.
+      .set({ stock: () => 'stock + :delta' })
       .where('id = :id', { id: variationId })
-      .andWhere('stock + :delta >= 0', { delta: quantityChange })
+      .andWhere('stock + :delta >= 0')
+      .setParameters({ id: variationId, delta: quantityChange })
       .returning('*')
       .execute();
 

@@ -1,6 +1,6 @@
 import { Injectable, BadRequestException, Logger } from '@nestjs/common';
 import * as fs from 'fs';
-import { join, dirname } from 'path';
+import { join, dirname, resolve, sep } from 'path';
 import { STORAGE_PATH } from '@app/utils/environments';
 import { IStorageService } from './storage.interface';
 
@@ -114,8 +114,14 @@ export class StorageServiceLocal implements IStorageService {
    */
   getSignedUrl(filePath: string): Promise<string> {
     try {
-      // For local storage, return the full path as "signed URL"
-      const fullPath = join(STORAGE_PATH, filePath);
+      // Reject path traversal: the resolved target must stay under
+      // STORAGE_PATH (e.g. `../../etc/passwd` escapes it). This is the choke
+      // point the image controller calls before reading the file.
+      const root = resolve(STORAGE_PATH);
+      const fullPath = resolve(root, filePath);
+      if (fullPath !== root && !fullPath.startsWith(root + sep)) {
+        throw new BadRequestException(`Invalid path: ${filePath}`);
+      }
       if (!fs.existsSync(fullPath)) {
         throw new BadRequestException(`File not found: ${filePath}`);
       }

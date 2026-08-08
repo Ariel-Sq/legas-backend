@@ -134,7 +134,7 @@ export class ReviewsService {
       throw new NotFoundException('Review not found');
     }
 
-    return review;
+    return this.stripReviewerPII(review);
   }
 
   async findByUser(userId: string): Promise<Review[]> {
@@ -144,11 +144,28 @@ export class ReviewsService {
     });
   }
 
+  /**
+   * Reviews are public, so the joined author must never carry PII. Replace
+   * `review.user` with only the display name (what the storefront renders);
+   * this can't be an entity-level @Exclude because /users/me needs the full
+   * record for the profile/checkout prefill.
+   */
+  private stripReviewerPII<T extends { user?: User | null }>(review: T): T {
+    if (review.user) {
+      review.user = {
+        firstName: review.user.firstName,
+        lastName: review.user.lastName,
+      } as User;
+    }
+    return review;
+  }
+
   async findAll(viewerUserId?: string): Promise<Review[]> {
     const reviews = await this.reviewRepository.find({
       relations: ['user', 'productVariation', 'images'],
       order: { createdAt: 'DESC' },
     });
+    reviews.forEach((r) => this.stripReviewerPII(r));
     if (viewerUserId && reviews.length > 0) {
       const votes = await this.helpfulVoteRepository.find({
         where: {
@@ -216,6 +233,7 @@ export class ReviewsService {
     queryBuilder.skip(skip).take(limit);
 
     const [reviews, total] = await queryBuilder.getManyAndCount();
+    reviews.forEach((r) => this.stripReviewerPII(r));
 
     return { reviews, total };
   }

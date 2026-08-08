@@ -20,6 +20,7 @@ export class GlobalExceptionFilter implements ExceptionFilter {
     let status = HttpStatus.INTERNAL_SERVER_ERROR;
     let message = 'Internal server error';
     let error = 'Internal Server Error';
+    let internalDetail: string | undefined;
 
     if (exception instanceof HttpException) {
       status = exception.getStatus();
@@ -34,12 +35,17 @@ export class GlobalExceptionFilter implements ExceptionFilter {
         error = (exceptionResponse as any).error || error;
       }
     } else if (exception instanceof Error) {
-      message = exception.message;
-      error = exception.name;
+      // Non-HttpException = unexpected server error. Log the real message
+      // (below) but never leak internal detail (DB errors, MercadoPago
+      // messages, stack hints) to the client.
+      internalDetail = exception.message;
+      error = 'Internal Server Error';
+      message = 'Internal server error';
     }
 
-    // Log the error details
-    this.logger.error(`Error occurred: ${message}`, {
+    // Log the error details (internalDetail carries the real message for
+    // non-HttpException errors that we masked in the client response).
+    this.logger.error(`Error occurred: ${internalDetail ?? message}`, {
       status,
       error,
       method: request.method,
