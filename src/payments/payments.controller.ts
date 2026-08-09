@@ -72,16 +72,32 @@ export class PaymentsController {
       throw new BadRequestException('Cart is empty');
     }
 
-    return this.paymentsService.createCheckoutPreferenceFromCart(
-      cart,
-      userInfo.userId,
-      userInfo.sessionId,
-      {
-        customerEmail: body.customerEmail,
-        customerPhone: body.customerPhone,
-      },
-      body.paymentMethod,
-    );
+    const contact = {
+      customerEmail: body.customerEmail,
+      customerPhone: body.customerPhone,
+    };
+
+    // Offline (transfer/cash): place the order, coordinate payment by
+    // WhatsApp. No MercadoPago preference.
+    if (body.paymentMethod === 'offline') {
+      const order = await this.paymentsService.createOfflineOrder(
+        cart,
+        userInfo.userId,
+        userInfo.sessionId,
+        contact,
+      );
+      return { mode: 'offline', orderId: order.id };
+    }
+
+    // MercadoPago (card / debit / account money): +20%, Checkout Pro.
+    const preference =
+      await this.paymentsService.createCheckoutPreferenceFromCart(
+        cart,
+        userInfo.userId,
+        userInfo.sessionId,
+        contact,
+      );
+    return { mode: 'mercadopago', ...preference };
   }
 
   @Post('/mercadopago/webhook')

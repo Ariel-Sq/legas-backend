@@ -30,6 +30,11 @@ const STATUS_ALIASES: Record<string, OrderStatus> = {
 // lifecycle; cancel/refund allowed from any paid state.
 const ALLOWED: Record<string, OrderStatus[]> = {
   [OrderStatus.PROCESSING_PAYMENT]: [OrderStatus.CANCELLED],
+  // Offline order: admin confirms the transfer/cash payment → preparing.
+  [OrderStatus.PENDING_TRANSFER]: [
+    OrderStatus.PAID_PREPARING,
+    OrderStatus.CANCELLED,
+  ],
   [OrderStatus.PAID_PREPARING]: [
     OrderStatus.PAID_READY_TO_SHIP,
     OrderStatus.CANCELLED,

@@ -14,6 +14,10 @@ import { User } from '@app/users/entities/user.entity';
 
 export enum OrderStatus {
   PROCESSING_PAYMENT = 'processing_payment',
+  // Placed with transfer/cash, awaiting payment coordination by WhatsApp.
+  // Not auto-cancelled by the 90-min MercadoPago sweep (a much longer one
+  // handles abandoned transfers).
+  PENDING_TRANSFER = 'pending_transfer',
   PAID_PREPARING = 'paid_preparing',
   PAID_READY_TO_SHIP = 'paid_ready_to_ship',
   PAID_SHIPPED = 'paid_shipped',

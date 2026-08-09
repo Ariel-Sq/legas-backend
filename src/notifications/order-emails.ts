@@ -20,6 +20,17 @@ export function orderEmailFor(
 ): OrderEmailContent | null {
   const shortId = orderId.slice(0, 8).toUpperCase();
   switch (status) {
+    case OrderStatus.PENDING_TRANSFER:
+      return {
+        subject: `Pedido ${shortId} recibido — coordinamos el pago — Legas Muebles`,
+        text:
+          `¡Gracias por tu compra!\n\n` +
+          `Registramos tu pedido ${shortId}. Elegiste pagar por transferencia ` +
+          `o efectivo, así que te vamos a escribir por WhatsApp para pasarte los ` +
+          `datos y coordinar el pago y la entrega. Tu pedido queda reservado.\n\n` +
+          `Podés seguir el estado en ${ORDERS_URL}\n\n` +
+          `O escribinos vos: ${WHATSAPP}\n\n— Legas Muebles`,
+      };
     case OrderStatus.PAID_PREPARING:
       return {
         subject: `¡Pago confirmado! Pedido ${shortId} — Legas Muebles`,

@@ -44,6 +44,7 @@ export class OrderService {
       totalAmount: number;
       customerEmail?: string;
       customerPhone?: string;
+      status?: OrderStatus;
     },
   ): Promise<Order> {
     const orderRepo = manager.getRepository(Order);
@@ -53,7 +54,7 @@ export class OrderService {
     const order = orderRepo.create({
       userId: data.userId || undefined,
       sessionId: data.sessionId || undefined,
-      status: OrderStatus.PROCESSING_PAYMENT,
+      status: data.status ?? OrderStatus.PROCESSING_PAYMENT,
       totalAmount: data.totalAmount,
       customerEmail: data.customerEmail ?? null,
       customerPhone: data.customerPhone ?? null,
@@ -100,6 +101,24 @@ export class OrderService {
   }
 
   /**
+   * Abandoned offline (transfer/cash) orders older than `maxAgeDays`: nobody
+   * confirmed the payment. Released on a long window (they legitimately take
+   * days to coordinate by WhatsApp), unlike the 90-min MP hold.
+   */
+  async findExpiredPendingTransfer(maxAgeDays: number): Promise<Order[]> {
+    return this.orderRepository
+      .createQueryBuilder('order')
+      .select(['order.id'])
+      .where('order.status = :status', {
+        status: OrderStatus.PENDING_TRANSFER,
+      })
+      .andWhere('order.createdAt < now() - make_interval(days => :days)', {
+        days: maxAgeDays,
+      })
+      .getMany();
+  }
+
+  /**
    * The shopper's own in-flight checkouts. A shopper has at most one live
    * checkout: starting a new one supersedes these (stock back, cancelled,
    * MP preference expired).
@@ -112,8 +131,13 @@ export class OrderService {
     const qb = this.orderRepository
       .createQueryBuilder('order')
       .select(['order.id', 'order.preferenceId'])
-      .where('order.status = :status', {
-        status: OrderStatus.PROCESSING_PAYMENT,
+      // Both live pre-payment states: an MP checkout and an offline transfer
+      // are superseded when the shopper places a new order.
+      .where('order.status IN (:...statuses)', {
+        statuses: [
+          OrderStatus.PROCESSING_PAYMENT,
+          OrderStatus.PENDING_TRANSFER,
+        ],
       });
     if (userId) {
       qb.andWhere('order.userId = :userId', { userId });
@@ -288,6 +312,10 @@ export class OrderService {
 
     const allowed: Record<OrderStatus, OrderStatus[]> = {
       [OrderStatus.PROCESSING_PAYMENT]: [OrderStatus.CANCELLED],
+      [OrderStatus.PENDING_TRANSFER]: [
+        OrderStatus.PAID_PREPARING,
+        OrderStatus.CANCELLED,
+      ],
       [OrderStatus.PAID_PREPARING]: [
         OrderStatus.PAID_READY_TO_SHIP,
         OrderStatus.REFUNDED,

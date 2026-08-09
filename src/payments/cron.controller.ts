@@ -25,16 +25,20 @@ export class CronController {
       'Cancels PROCESSING_PAYMENT orders older than the hold window (restoring stock) and deletes anonymous carts untouched for 30 days.',
   })
   @ApiResponse({ status: 200, description: 'Counts of the sweep.' })
-  async releaseStock(
-    @Req() req: Request,
-  ): Promise<{ released: number; orphanCartsDeleted: number }> {
+  async releaseStock(@Req() req: Request): Promise<{
+    released: number;
+    transfersReleased: number;
+    orphanCartsDeleted: number;
+  }> {
     const secret = process.env.CRON_SECRET;
     if (secret && req.headers.authorization !== `Bearer ${secret}`) {
       throw new UnauthorizedException('Invalid cron secret');
     }
     const released = await this.paymentsService.releaseExpiredCheckouts();
+    const transfersReleased =
+      await this.paymentsService.releaseExpiredTransfers();
     const orphanCartsDeleted =
       await this.cartService.cleanupOrphanAnonymousCarts();
-    return { released, orphanCartsDeleted };
+    return { released, transfersReleased, orphanCartsDeleted };
   }
 }

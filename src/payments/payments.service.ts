@@ -14,9 +14,8 @@ import { CartService } from '@app/cart/cart.service';
 import { Cart } from '@app/cart/entities/cart.entity';
 import { Order, OrderStatus } from './entities/order.entity';
 import {
-  DEFAULT_PAYMENT_METHOD,
-  PAYMENT_METHOD_CONFIG,
-  type CheckoutPaymentMethod,
+  MERCADOPAGO_SURCHARGE_RATE,
+  MERCADOPAGO_MAX_INSTALLMENTS,
 } from './payment-method.config';
 import { EmailService } from '@app/notifications/email.service';
 import { orderEmailFor } from '@app/notifications/order-emails';
@@ -41,6 +40,9 @@ interface PreferenceItem {
  */
 export const CHECKOUT_EXPIRATION_MINUTES = 60;
 export const STOCK_HOLD_RELEASE_MINUTES = 90;
+// Offline (transfer/cash) orders legitimately take days to coordinate by
+// WhatsApp, so their stock hold is released on a much longer window.
+export const TRANSFER_RELEASE_DAYS = 14;
 
 @Injectable()
 export class PaymentsService {
@@ -76,9 +78,7 @@ export class PaymentsService {
     userId?: string,
     sessionId?: string,
     contact: { customerEmail?: string; customerPhone?: string } = {},
-    paymentMethod: CheckoutPaymentMethod = DEFAULT_PAYMENT_METHOD,
   ) {
-    const methodConfig = PAYMENT_METHOD_CONFIG[paymentMethod];
     if (userId) {
       await this.usersService.findById(userId);
     }
@@ -107,13 +107,12 @@ export class PaymentsService {
       id: item.productVariationId,
       quantity: item.quantity,
     }));
-    // Catalogue prices are cash/transfer prices. Online checkout goes through
-    // MercadoPago, which carries a method-dependent surcharge — applied to
-    // the order total and to every MP preference item so the charge matches
-    // the summary shown in the frontend (see payment-method.config.ts).
+    // Catalogue prices are cash/transfer prices. MercadoPago carries a flat
+    // surcharge (any method) — applied to the order total and to every MP
+    // preference item so the charge matches the frontend summary.
     const totalAmount =
       Math.round(
-        Number(cart.totalPrice) * (1 + methodConfig.surchargeRate) * 100,
+        Number(cart.totalPrice) * (1 + MERCADOPAGO_SURCHARGE_RATE) * 100,
       ) / 100;
 
     // Phase 1 — atomic reserve + order create (no network calls inside).
@@ -144,7 +143,7 @@ export class PaymentsService {
     try {
       const items = await Promise.all(
         cart.items.map((item) =>
-          this.mapCartItemToPreferenceItem(item, methodConfig.surchargeRate),
+          this.mapCartItemToPreferenceItem(item, MERCADOPAGO_SURCHARGE_RATE),
         ),
       );
 
@@ -153,11 +152,10 @@ export class PaymentsService {
       );
       const preferenceData: PreferenceRequest = {
         items,
-        // Restrict the MP screen to the methods matching the chosen
-        // surcharge, and cap installments (3 for credit).
+        // Flat surcharge for all MP methods, so nothing is excluded; just
+        // cap installments (hasta 3 cuotas).
         payment_methods: {
-          excluded_payment_types: methodConfig.excludedPaymentTypes,
-          installments: methodConfig.maxInstallments,
+          installments: MERCADOPAGO_MAX_INSTALLMENTS,
           default_installments: 1,
         },
         // MP stops accepting this payment after the stock hold window, so
@@ -205,6 +203,76 @@ export class PaymentsService {
         `Failed to create Mercado Pago preference: ${error.message}`,
       );
     }
+  }
+
+  /**
+   * Offline checkout (transfer/cash): reserve stock and create the order at
+   * list price (no surcharge), status PENDING_TRANSFER. No MercadoPago
+   * preference — payment is coordinated by WhatsApp afterwards. Sends the
+   * "order received" email. Returns the created order.
+   */
+  async createOfflineOrder(
+    cart: Cart,
+    userId?: string,
+    sessionId?: string,
+    contact: { customerEmail?: string; customerPhone?: string } = {},
+  ): Promise<Order> {
+    if (userId) {
+      await this.usersService.findById(userId);
+    }
+    if (!cart.items || cart.items.length === 0) {
+      throw new BadRequestException('Cart is empty');
+    }
+
+    await this.supersedePendingCheckouts(userId, sessionId).catch((err) =>
+      this.logger.warn(`supersedePendingCheckouts failed: ${err.message}`),
+    );
+    await this.releaseExpiredCheckouts().catch((err) =>
+      this.logger.warn(`releaseExpiredCheckouts failed: ${err.message}`),
+    );
+
+    const checkoutItems: CheckoutItemDto[] = cart.items.map((item) => ({
+      id: item.productVariationId,
+      quantity: item.quantity,
+    }));
+    // No surcharge: list price is the cash/transfer price.
+    const totalAmount = Number(cart.totalPrice);
+
+    const order = await this.dataSource.transaction(async (manager) => {
+      const ids = checkoutItems.map((i) => i.id);
+      await this.productsService.lockVariationsForUpdate(manager, ids);
+      for (const item of checkoutItems) {
+        await this.productsService.updateStockWithManager(
+          manager,
+          item.id,
+          -item.quantity,
+        );
+      }
+      return this.orderService.createOrderInTx(manager, {
+        userId,
+        sessionId,
+        items: checkoutItems,
+        totalAmount,
+        customerEmail: contact.customerEmail,
+        customerPhone: contact.customerPhone,
+        status: OrderStatus.PENDING_TRANSFER,
+      });
+    });
+
+    // Clear the cart now (offline orders have no webhook to do it later).
+    await this.clearCartAfterPayment(userId, sessionId).catch(() => undefined);
+
+    if (order.customerEmail) {
+      const email = orderEmailFor(OrderStatus.PENDING_TRANSFER, order.id);
+      if (email) {
+        void this.emailService.send(
+          order.customerEmail,
+          email.subject,
+          email.text,
+        );
+      }
+    }
+    return order;
   }
 
   /**
@@ -276,8 +344,26 @@ export class PaymentsService {
   }
 
   /**
+   * Cancel abandoned offline (transfer/cash) orders older than
+   * TRANSFER_RELEASE_DAYS and restore their stock. Idempotent.
+   */
+  async releaseExpiredTransfers(): Promise<number> {
+    const expired = await this.orderService.findExpiredPendingTransfer(
+      TRANSFER_RELEASE_DAYS,
+    );
+    for (const order of expired) {
+      await this.compensateFailedCheckout(order.id);
+    }
+    if (expired.length > 0) {
+      this.logger.log(`Released ${expired.length} expired transfer(s)`);
+    }
+    return expired.length;
+  }
+
+  /**
    * Restore stock and mark the order CANCELLED. Idempotent — repeated calls
-   * after the order has already been compensated are no-ops.
+   * after the order has already been compensated are no-ops. Releases from
+   * either live pre-payment state (MP checkout or offline transfer).
    */
   private async compensateFailedCheckout(orderId: string): Promise<void> {
     const order = await this.orderService.findById(orderId);
@@ -285,7 +371,11 @@ export class PaymentsService {
       this.logger.warn(`compensate: order ${orderId} not found`);
       return;
     }
-    if (order.status !== OrderStatus.PROCESSING_PAYMENT) {
+    const releasable: OrderStatus[] = [
+      OrderStatus.PROCESSING_PAYMENT,
+      OrderStatus.PENDING_TRANSFER,
+    ];
+    if (!releasable.includes(order.status)) {
       return;
     }
 
@@ -294,15 +384,19 @@ export class PaymentsService {
       await this.productsService.lockVariationsForUpdate(manager, ids);
 
       // Claim the compensation atomically: only the caller that flips the
-      // order out of PROCESSING_PAYMENT restores the stock. Protects
+      // order out of its pre-payment state restores the stock. Protects
       // against concurrent release (lazy + cron) double-restoring, and
       // against cancelling an order a webhook just marked as paid.
       const claimed = await manager
         .getRepository(Order)
-        .update(
-          { id: orderId, status: OrderStatus.PROCESSING_PAYMENT },
-          { status: OrderStatus.CANCELLED },
-        );
+        .createQueryBuilder()
+        .update(Order)
+        .set({ status: OrderStatus.CANCELLED })
+        .where('id = :id AND status IN (:...releasable)', {
+          id: orderId,
+          releasable,
+        })
+        .execute();
       if (!claimed.affected) return false;
 
       for (const item of order.items) {
