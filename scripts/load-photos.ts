@@ -20,6 +20,7 @@
  */
 import * as fs from 'fs';
 import * as path from 'path';
+import { put } from '@vercel/blob';
 import dataSource from '../src/typeorm.config';
 import { ProductTemplate } from '../src/products/entities/product-template.entity';
 import { ProductImage } from '../src/products/entities/product-image.entity';
@@ -96,6 +97,8 @@ const MAP: Array<[string, number[]]> = [
   ['mesa-comedor-gerbasoni-alamo-sin-nudos', [27]],
 ];
 
+const IS_BLOB = process.env.STORAGE_TYPE === 'VERCEL_BLOB';
+
 function ext(file: string): string {
   return path.extname(file).toLowerCase() === '.png' ? 'png' : 'jpg';
 }
@@ -109,15 +112,29 @@ function resolveSrc(filename: string): string {
   throw new Error(`Missing source file: ${filename}`);
 }
 
-function copyFile(filename: string, destBase: string): string {
+/**
+ * Publish a source file under products/legas/<destBase>.<ext> and return its
+ * logical path. LOCAL copies into the storage dir; VERCEL_BLOB uploads to the
+ * Blob store (same pathname, no random suffix — matches StorageServiceBlob).
+ */
+async function copyFile(filename: string, destBase: string): Promise<string> {
   const abs = resolveSrc(filename);
   const e = ext(filename);
   const destName = `${destBase}.${e}`;
-  fs.copyFileSync(abs, path.join(DEST_DIR, destName));
-  return `${IMAGE_DIR}/${destName}`; // logical path
+  const logical = `${IMAGE_DIR}/${destName}`;
+  if (IS_BLOB) {
+    await put(logical, fs.readFileSync(abs), {
+      access: 'public',
+      addRandomSuffix: false,
+      contentType: e === 'png' ? 'image/png' : 'image/jpeg',
+    });
+  } else {
+    fs.copyFileSync(abs, path.join(DEST_DIR, destName));
+  }
+  return logical;
 }
 
-function copyPhoto(num: number, destBase: string): string {
+function copyPhoto(num: number, destBase: string): Promise<string> {
   const src = N[num];
   if (!src) throw new Error(`No source filename for photo #${num}`);
   return copyFile(src, destBase);
@@ -139,15 +156,16 @@ function makeImage(
 }
 
 async function main() {
-  fs.mkdirSync(DEST_DIR, { recursive: true });
+  if (!IS_BLOB) fs.mkdirSync(DEST_DIR, { recursive: true });
+  console.log(`Storage: ${IS_BLOB ? 'VERCEL_BLOB' : 'LOCAL'}`);
 
   await dataSource.initialize();
   const templates = dataSource.getRepository(ProductTemplate);
   const images = dataSource.getRepository(ProductImage);
 
-  // 1) Copy the single captioned tint sample once.
-  const samplePaths: string[] = [copyFile(SAMPLE_FILE, 'muestra-tinta')];
-  console.log(`Copied ${samplePaths.length} tint sample.`);
+  // 1) Publish the single captioned tint sample once.
+  const samplePaths: string[] = [await copyFile(SAMPLE_FILE, 'muestra-tinta')];
+  console.log(`Published ${samplePaths.length} tint sample.`);
 
   const mapBySlug = new Map(MAP);
 
@@ -162,7 +180,9 @@ async function main() {
     let productPaths: string[] = [];
     if (mapBySlug.has(tpl.slug)) {
       const nums = mapBySlug.get(tpl.slug)!;
-      productPaths = nums.map((num, i) => copyPhoto(num, `${tpl.slug}-${i + 1}`));
+      productPaths = await Promise.all(
+        nums.map((num, i) => copyPhoto(num, `${tpl.slug}-${i + 1}`)),
+      );
       withReal++;
     } else {
       // Keep the existing catalogue lámina (first non-sample image path).
