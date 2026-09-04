@@ -33,7 +33,9 @@ const SP =
 const SRC_DIR = process.env.PHOTOS_SRC || `${SP}/legas-img/Legas img`;
 // Retouched versions (seals removed, captioned sample) take precedence.
 const PROCESSED_DIR = process.env.PHOTOS_PROCESSED || `${SP}/processed`;
-// Single captioned tint-sample file (lives in PROCESSED_DIR).
+// WebP versions (smallest, seals removed) win over everything.
+const WEBP_DIR = process.env.PHOTOS_WEBP || `${SP}/webp`;
+// Single captioned tint-sample file (resolved to its .webp variant).
 const SAMPLE_FILE = 'muestra-tinta.jpg';
 
 // Photo number (from the contact sheet) -> original filename in SRC_DIR.
@@ -100,11 +102,22 @@ const MAP: Array<[string, number[]]> = [
 const IS_BLOB = process.env.STORAGE_TYPE === 'VERCEL_BLOB';
 
 function ext(file: string): string {
-  return path.extname(file).toLowerCase() === '.png' ? 'png' : 'jpg';
+  const e = path.extname(file).toLowerCase();
+  return e === '.png' ? 'png' : e === '.webp' ? 'webp' : 'jpg';
 }
 
-/** Resolve a source file, preferring the retouched copy in PROCESSED_DIR. */
+function contentTypeFor(e: string): string {
+  return e === 'png' ? 'image/png' : e === 'webp' ? 'image/webp' : 'image/jpeg';
+}
+
+/**
+ * Resolve a source file, preferring the WebP version, then the retouched
+ * copy in PROCESSED_DIR, then the raw original.
+ */
 function resolveSrc(filename: string): string {
+  const stem = path.basename(filename, path.extname(filename));
+  const webp = path.join(WEBP_DIR, `${stem}.webp`);
+  if (fs.existsSync(webp)) return webp;
   const processed = path.join(PROCESSED_DIR, filename);
   if (fs.existsSync(processed)) return processed;
   const original = path.join(SRC_DIR, filename);
@@ -119,14 +132,15 @@ function resolveSrc(filename: string): string {
  */
 async function copyFile(filename: string, destBase: string): Promise<string> {
   const abs = resolveSrc(filename);
-  const e = ext(filename);
+  const e = ext(abs); // actual extension of the resolved file (usually webp)
   const destName = `${destBase}.${e}`;
   const logical = `${IMAGE_DIR}/${destName}`;
   if (IS_BLOB) {
     await put(logical, fs.readFileSync(abs), {
       access: 'public',
       addRandomSuffix: false,
-      contentType: e === 'png' ? 'image/png' : 'image/jpeg',
+      contentType: contentTypeFor(e),
+      allowOverwrite: true,
     });
   } else {
     fs.copyFileSync(abs, path.join(DEST_DIR, destName));
