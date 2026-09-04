@@ -77,7 +77,13 @@ export class PaymentsService {
     cart: Cart,
     userId?: string,
     sessionId?: string,
-    contact: { customerEmail?: string; customerPhone?: string } = {},
+    contact: {
+      customerEmail?: string;
+      customerPhone?: string;
+      customerDni?: string;
+      deliveryMethod?: 'delivery' | 'pickup';
+      deliveryAddress?: string;
+    } = {},
   ) {
     if (userId) {
       await this.usersService.findById(userId);
@@ -136,6 +142,9 @@ export class PaymentsService {
         totalAmount,
         customerEmail: contact.customerEmail,
         customerPhone: contact.customerPhone,
+        customerDni: contact.customerDni,
+        deliveryMethod: contact.deliveryMethod,
+        deliveryAddress: contact.deliveryAddress,
       });
     });
 
@@ -152,8 +161,8 @@ export class PaymentsService {
       );
       const preferenceData: PreferenceRequest = {
         items,
-        // Flat surcharge for all MP methods, so nothing is excluded; just
-        // cap installments (hasta 3 cuotas).
+        // No surcharge: list price for every method. The shopper freely
+        // chooses how many installments to finance through MercadoPago.
         payment_methods: {
           installments: MERCADOPAGO_MAX_INSTALLMENTS,
           default_installments: 1,
@@ -215,7 +224,13 @@ export class PaymentsService {
     cart: Cart,
     userId?: string,
     sessionId?: string,
-    contact: { customerEmail?: string; customerPhone?: string } = {},
+    contact: {
+      customerEmail?: string;
+      customerPhone?: string;
+      customerDni?: string;
+      deliveryMethod?: 'delivery' | 'pickup';
+      deliveryAddress?: string;
+    } = {},
   ): Promise<Order> {
     if (userId) {
       await this.usersService.findById(userId);
@@ -255,6 +270,9 @@ export class PaymentsService {
         totalAmount,
         customerEmail: contact.customerEmail,
         customerPhone: contact.customerPhone,
+        customerDni: contact.customerDni,
+        deliveryMethod: contact.deliveryMethod,
+        deliveryAddress: contact.deliveryAddress,
         status: OrderStatus.PENDING_TRANSFER,
       });
     });

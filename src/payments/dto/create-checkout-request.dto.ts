@@ -39,4 +39,21 @@ export class CreateCheckoutRequestDto {
   @IsString()
   @MaxLength(40)
   customerPhone?: string;
+
+  @ApiPropertyOptional({ example: '30123456' })
+  @IsOptional()
+  @IsString()
+  @MaxLength(20)
+  customerDni?: string;
+
+  @ApiPropertyOptional({ enum: ['delivery', 'pickup'] })
+  @IsOptional()
+  @IsIn(['delivery', 'pickup'])
+  deliveryMethod?: 'delivery' | 'pickup';
+
+  @ApiPropertyOptional({ example: 'Av. Siempre Viva 742, piso 3, CABA' })
+  @IsOptional()
+  @IsString()
+  @MaxLength(500)
+  deliveryAddress?: string;
 }

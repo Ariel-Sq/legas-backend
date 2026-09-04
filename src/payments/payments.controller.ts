@@ -75,6 +75,9 @@ export class PaymentsController {
     const contact = {
       customerEmail: body.customerEmail,
       customerPhone: body.customerPhone,
+      customerDni: body.customerDni,
+      deliveryMethod: body.deliveryMethod,
+      deliveryAddress: body.deliveryAddress,
     };
 
     // Offline (transfer/cash): place the order, coordinate payment by

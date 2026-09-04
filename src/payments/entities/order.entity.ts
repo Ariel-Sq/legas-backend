@@ -57,6 +57,15 @@ export class Order {
   @Column({ type: 'varchar', nullable: true })
   customerPhone: string | null;
 
+  @Column({ type: 'varchar', nullable: true })
+  customerDni: string | null;
+
+  @Column({ type: 'varchar', nullable: true, default: 'delivery' })
+  deliveryMethod: string | null;
+
+  @Column({ type: 'varchar', nullable: true })
+  deliveryAddress: string | null;
+
   /**
    * MercadoPago preference id — lets a superseded checkout expire its MP
    * preference so the old payment link stops being payable.

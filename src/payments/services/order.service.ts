@@ -44,6 +44,9 @@ export class OrderService {
       totalAmount: number;
       customerEmail?: string;
       customerPhone?: string;
+      customerDni?: string;
+      deliveryMethod?: 'delivery' | 'pickup';
+      deliveryAddress?: string;
       status?: OrderStatus;
     },
   ): Promise<Order> {
@@ -58,6 +61,9 @@ export class OrderService {
       totalAmount: data.totalAmount,
       customerEmail: data.customerEmail ?? null,
       customerPhone: data.customerPhone ?? null,
+      customerDni: data.customerDni ?? null,
+      deliveryMethod: data.deliveryMethod ?? 'delivery',
+      deliveryAddress: data.deliveryAddress ?? null,
     });
     const savedOrder = await orderRepo.save(order);
 
