@@ -16,7 +16,7 @@ import {
   ProductTemplateSortField,
   SortOrder,
 } from '../dto/list-product-templates-query.dto';
-import { BACKEND_URL } from '@app/utils/environments';
+import { publicImageUrl } from '@app/utils/image-url';
 
 @Injectable()
 export class ProductTemplatesService {
@@ -78,7 +78,7 @@ export class ProductTemplatesService {
     res.forEach((template) => {
       template.variations.forEach((variation) => {
         variation.images.forEach((image) => {
-          image.url = `${BACKEND_URL}/api/images/${image.path}`;
+          image.url = publicImageUrl(image);
         });
       });
     });
@@ -108,7 +108,7 @@ export class ProductTemplatesService {
 
     template.variations.forEach((variation) => {
       variation.images.forEach((image) => {
-        image.url = `${BACKEND_URL}/api/images/${image.path}`;
+        image.url = publicImageUrl(image);
       });
     });
 
@@ -135,7 +135,7 @@ export class ProductTemplatesService {
     // Transform image URLs to full URLs
     template.variations.forEach((variation) => {
       variation.images.forEach((image) => {
-        image.url = `${BACKEND_URL}/api/images/${image.path}`;
+        image.url = publicImageUrl(image);
       });
     });
 

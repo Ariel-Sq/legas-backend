@@ -13,12 +13,24 @@ interface HasVariations {
   productVariation?: VariationLike | null;
 }
 
+// With Vercel Blob the files live on a public CDN; serve them straight from
+// it instead of proxying every byte through this (cold-startable) lambda,
+// which was the cause of intermittent 400s and ~1s image loads. The
+// /api/images route stays as a fallback for local storage.
+const IS_BLOB = process.env.STORAGE_TYPE === 'VERCEL_BLOB';
+const BLOB_PUBLIC_BASE = (
+  process.env.BLOB_BASE_URL ||
+  'https://0mqx9o0nbcz0tpwh.public.blob.vercel-storage.com'
+).replace(/\/$/, '');
+
 // Path-style (no query string) so Next.js image optimization accepts the
 // URL — remotePatterns with an omitted `search` reject query strings.
 export function publicImageUrl(image: ImageLike | undefined | null): string {
   if (!image) return '';
   if (image.path) {
-    return `${BACKEND_URL}/api/images/${image.path}`;
+    return IS_BLOB
+      ? `${BLOB_PUBLIC_BASE}/${image.path}`
+      : `${BACKEND_URL}/api/images/${image.path}`;
   }
   return image.url ?? '';
 }
