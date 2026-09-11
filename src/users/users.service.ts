@@ -4,7 +4,7 @@ import {
   ConflictException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { DataSource, Repository } from 'typeorm';
 import { User, AuthProvider } from './entities/user.entity';
 import { UpdateUserDto } from './dto/update-user.dto';
 
@@ -13,6 +13,7 @@ export class UsersService {
   constructor(
     @InjectRepository(User)
     private usersRepository: Repository<User>,
+    private readonly dataSource: DataSource,
   ) {}
 
   async findAll(): Promise<User[]> {
@@ -102,6 +103,93 @@ export class UsersService {
   async remove(id: string): Promise<void> {
     const user = await this.findById(id);
     await this.usersRepository.remove(user);
+  }
+
+  /**
+   * Permanently delete the account and the shopper's personal data:
+   *  - helpful votes and reports cast by the user (with their recount);
+   *  - cart (with items) and wishlist;
+   *  - the user row itself.
+   *
+   * Reviews are KEPT: they are anonymized (userId → NULL) and keep the
+   * `authorName` snapshot, so the storefront still shows them. Orders are
+   * kept for accounting but fully anonymized (userId and all customer PII
+   * cleared).
+   *
+   * Deletes are explicit (not relying on DB FK cascades) so the whole thing
+   * is safe even if a constraint was created without ON DELETE CASCADE.
+   */
+  async removeAccount(id: string): Promise<void> {
+    await this.dataSource.transaction(async (manager) => {
+      const user = await manager.getRepository(User).findOne({ where: { id } });
+      if (!user) {
+        throw new NotFoundException(`User with ID ${id} not found`);
+      }
+
+      // Votes/reports are personal actions — remove them and recount the
+      // affected reviews so the public counters don't drift.
+      const votedReviews: { reviewId: string }[] = await manager.query(
+        `SELECT DISTINCT "reviewId" FROM review_helpful_votes WHERE "userId" = $1`,
+        [id],
+      );
+      const reportedReviews: { reviewId: string }[] = await manager.query(
+        `SELECT DISTINCT "reviewId" FROM review_reports WHERE "userId" = $1`,
+        [id],
+      );
+      await manager.query(
+        `DELETE FROM review_helpful_votes WHERE "userId" = $1`,
+        [id],
+      );
+      await manager.query(`DELETE FROM review_reports WHERE "userId" = $1`, [
+        id,
+      ]);
+      for (const { reviewId } of votedReviews) {
+        await manager.query(
+          `UPDATE reviews
+             SET "helpfulVotes" = (SELECT COUNT(*) FROM review_helpful_votes WHERE "reviewId" = $1)
+           WHERE id = $1`,
+          [reviewId],
+        );
+      }
+      for (const { reviewId } of reportedReviews) {
+        await manager.query(
+          `UPDATE reviews
+             SET "reportCount" = (SELECT COUNT(*) FROM review_reports WHERE "reviewId" = $1)
+           WHERE id = $1`,
+          [reviewId],
+        );
+      }
+
+      // Keep the reviews, but detach them from the (soon to be deleted) user.
+      await manager.query(
+        `UPDATE reviews SET "userId" = NULL WHERE "userId" = $1`,
+        [id],
+      );
+
+      await manager.query(`DELETE FROM wishlist_items WHERE "userId" = $1`, [
+        id,
+      ]);
+      await manager.query(
+        `DELETE FROM cart_items
+           WHERE "cartId" IN (SELECT id FROM carts WHERE "userId" = $1)`,
+        [id],
+      );
+      await manager.query(`DELETE FROM carts WHERE "userId" = $1`, [id]);
+      // Orders are kept for accounting, but stripped of any personal data so
+      // the deletion is real (no way to re-identify the buyer).
+      await manager.query(
+        `UPDATE orders
+           SET "userId" = NULL,
+               "sessionId" = NULL,
+               "customerEmail" = NULL,
+               "customerPhone" = NULL,
+               "customerDni" = NULL,
+               "deliveryAddress" = NULL
+         WHERE "userId" = $1`,
+        [id],
+      );
+      await manager.query(`DELETE FROM users WHERE id = $1`, [id]);
+    });
   }
 
   async findOrCreateFromOAuth(

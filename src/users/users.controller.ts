@@ -1,4 +1,12 @@
-import { Body, Controller, Get, Patch, UseGuards } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Delete,
+  Get,
+  HttpCode,
+  Patch,
+  UseGuards,
+} from '@nestjs/common';
 import { ApiOperation, ApiResponse } from '@nestjs/swagger';
 import { UsersService } from './users.service';
 import { UpdateProfileDto } from './dto/update-profile.dto';
@@ -47,5 +55,22 @@ export class UsersController {
     @Body() dto: UpdateProfileDto,
   ): Promise<User> {
     return this.usersService.update(userInfo.userId!, dto);
+  }
+
+  @Delete('me')
+  @HttpCode(204)
+  @UseGuards(AuthenticatedGuard)
+  @ApiOperation({
+    summary: 'Delete the current user’s account',
+    description:
+      'Permanently deletes the account and its personal data (cart, ' +
+      'wishlist, helpful votes). Reviews are kept but anonymized, and ' +
+      'orders are kept for accounting with all personal data removed. ' +
+      'Irreversible.',
+  })
+  @ApiResponse({ status: 204, description: 'Account deleted.' })
+  @ApiResponse({ status: 401, description: 'Not authenticated.' })
+  async deleteMe(@UserInfo() userInfo: UserInfoType): Promise<void> {
+    await this.usersService.removeAccount(userInfo.userId!);
   }
 }

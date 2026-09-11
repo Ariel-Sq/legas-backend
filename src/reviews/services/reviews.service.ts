@@ -93,6 +93,10 @@ export class ReviewsService {
 
     const reviewData: Partial<Review> = {
       userId,
+      // Snapshot the display name so the review survives account deletion.
+      authorName:
+        [user.firstName, user.lastName].filter(Boolean).join(' ').trim() ||
+        user.email,
       productVariationId: createReviewDto.productVariationId,
       title: createReviewDto.title,
       content: createReviewDto.content,

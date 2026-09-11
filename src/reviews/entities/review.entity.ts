@@ -41,16 +41,25 @@ export class Review {
     description: 'ID of the user who wrote the review',
     example: '123e4567-e89b-12d3-a456-426614174000',
   })
-  @Column({ type: 'uuid' })
-  userId: string;
+  @Column({ type: 'uuid', nullable: true })
+  userId: string | null;
 
   @ApiPropertyOptional({
     description: 'User who wrote the review',
     type: () => User,
   })
-  @ManyToOne(() => User, { onDelete: 'CASCADE' })
+  @ManyToOne(() => User, { onDelete: 'SET NULL', nullable: true })
   @JoinColumn({ name: 'userId' })
-  user: User;
+  user: User | null;
+
+  @ApiPropertyOptional({
+    description:
+      'Snapshot of the author display name, kept after the account is deleted',
+    example: 'Juan Pérez',
+    maxLength: 200,
+  })
+  @Column({ type: 'varchar', length: 200, nullable: true })
+  authorName: string | null;
 
   @ApiProperty({
     description: 'ID of the product variation being reviewed',
