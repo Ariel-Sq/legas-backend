@@ -6,7 +6,17 @@ export interface OrderEmailContent {
 }
 
 const WHATSAPP = 'https://wa.me/5491173666370';
-const ORDERS_URL = 'https://legas.vercel.app/orders';
+
+/**
+ * Public storefront URL for links inside the emails. Configurable via
+ * FRONTEND_URL (set it in prod, e.g. https://legasmuebles.com); falls back to
+ * the legacy domain so a missing env doesn't produce broken links.
+ */
+const FRONTEND_URL = (
+  process.env.FRONTEND_URL ?? 'https://legas.vercel.app'
+).replace(/\/$/, '');
+const ORDERS_URL = `${FRONTEND_URL}/orders`;
+const ARREPENTIMIENTO_URL = `${FRONTEND_URL}/arrepentimiento`;
 
 /**
  * Plain-text customer emails per order status, in the store's voice
@@ -68,7 +78,7 @@ export function orderEmailFor(
           `Esperamos que lo disfrutes muchos años. Si querés, dejanos una ` +
           `reseña desde ${ORDERS_URL} — nos ayuda un montón.\n\n` +
           `Recordá que tenés 10 días para arrepentirte de la compra sin costo ` +
-          `(https://legas.vercel.app/arrepentimiento) y 6 meses de garantía ` +
+          `(${ARREPENTIMIENTO_URL}) y 6 meses de garantía ` +
           `legal por defectos de fabricación.\n\n— Legas Muebles`,
       };
     case OrderStatus.REFUNDED:
@@ -103,7 +113,7 @@ export function orderWhatsAppFor(
     case OrderStatus.PAID_SHIPPED:
       return `${hola} Tu pedido ${shortId} de Legas ya está en camino 🚚 Cualquier cosa sobre la entrega me avisás por acá.`;
     case OrderStatus.PAID_DELIVERED:
-      return `${hola} ¡Pedido ${shortId} entregado! Esperamos que lo disfrutes 🙌 Si tenés un minuto, una reseña en la tienda nos ayuda muchísimo: https://legas.vercel.app/orders`;
+      return `${hola} ¡Pedido ${shortId} entregado! Esperamos que lo disfrutes 🙌 Si tenés un minuto, una reseña en la tienda nos ayuda muchísimo: ${ORDERS_URL}`;
     default:
       return null;
   }
