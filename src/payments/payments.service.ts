@@ -16,6 +16,7 @@ import { Order, OrderStatus } from './entities/order.entity';
 import {
   MERCADOPAGO_SURCHARGE_RATE,
   MERCADOPAGO_MAX_INSTALLMENTS,
+  TRANSFER_DISCOUNT_RATE,
 } from './payment-method.config';
 import { EmailService } from '@app/notifications/email.service';
 import { orderEmailFor } from '@app/notifications/order-emails';
@@ -216,7 +217,7 @@ export class PaymentsService {
 
   /**
    * Offline checkout (transfer/cash): reserve stock and create the order at
-   * list price (no surcharge), status PENDING_TRANSFER. No MercadoPago
+   * the discounted transfer price, status PENDING_TRANSFER. No MercadoPago
    * preference — payment is coordinated by WhatsApp afterwards. Sends the
    * "order received" email. Returns the created order.
    */
@@ -250,8 +251,10 @@ export class PaymentsService {
       id: item.productVariationId,
       quantity: item.quantity,
     }));
-    // No surcharge: list price is the cash/transfer price.
-    const totalAmount = Number(cart.totalPrice);
+    // Transfer/cash pays the discounted price (MP keeps the list price).
+    const totalAmount =
+      Math.round(Number(cart.totalPrice) * (1 - TRANSFER_DISCOUNT_RATE) * 100) /
+      100;
 
     const order = await this.dataSource.transaction(async (manager) => {
       const ids = checkoutItems.map((i) => i.id);
