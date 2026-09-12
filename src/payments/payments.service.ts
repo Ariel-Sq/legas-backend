@@ -85,12 +85,30 @@ export class PaymentsService {
       deliveryMethod?: 'delivery' | 'pickup';
       deliveryAddress?: string;
     } = {},
+    idempotencyKey?: string,
   ) {
     if (userId) {
       await this.usersService.findById(userId);
     }
     if (!cart.items || cart.items.length === 0) {
       throw new BadRequestException('Cart is empty');
+    }
+
+    // Idempotent replay: if this exact attempt already created a live order,
+    // return its existing MP preference instead of creating another order.
+    if (idempotencyKey) {
+      const existing = await this.orderService.findLiveByCheckoutKey(
+        userId,
+        sessionId,
+        idempotencyKey,
+      );
+      if (existing?.preferenceId) {
+        const preference = new Preference(this.client);
+        const pref = await preference.get({
+          preferenceId: existing.preferenceId,
+        });
+        return { ...pref, checkoutUrl: this.resolveCheckoutUrl(pref) };
+      }
     }
 
     // A shopper has at most one live checkout: starting a new one (e.g.
@@ -146,6 +164,7 @@ export class PaymentsService {
         customerDni: contact.customerDni,
         deliveryMethod: contact.deliveryMethod,
         deliveryAddress: contact.deliveryAddress,
+        checkoutKey: idempotencyKey,
       });
     });
 
@@ -203,7 +222,7 @@ export class PaymentsService {
             ),
           );
       }
-      return response;
+      return { ...response, checkoutUrl: this.resolveCheckoutUrl(response) };
     } catch (error: any) {
       this.logger.error(
         `MercadoPago preference failed for order ${order.id}: ${error.message}`,
@@ -213,6 +232,20 @@ export class PaymentsService {
         `Failed to create Mercado Pago preference: ${error.message}`,
       );
     }
+  }
+
+  /**
+   * Checkout URL the shopper should be sent to. Uses the sandbox URL when
+   * MERCADOPAGO_SANDBOX=true (test credentials), the production one otherwise.
+   */
+  private resolveCheckoutUrl(pref: {
+    init_point?: string;
+    sandbox_init_point?: string;
+  }): string {
+    const sandbox =
+      this.configService.get<string>('MERCADOPAGO_SANDBOX') === 'true';
+    const url = sandbox ? pref.sandbox_init_point : pref.init_point;
+    return url ?? pref.init_point ?? pref.sandbox_init_point ?? '';
   }
 
   /**
@@ -313,7 +346,7 @@ export class PaymentsService {
       if (order.preferenceId) {
         await this.expirePreference(order.preferenceId);
       }
-      await this.compensateFailedCheckout(order.id);
+      await this.compensateFailedCheckout(order.id, 'expired');
     }
     if (pending.length > 0) {
       this.logger.log(
@@ -356,7 +389,7 @@ export class PaymentsService {
       STOCK_HOLD_RELEASE_MINUTES,
     );
     for (const order of expired) {
-      await this.compensateFailedCheckout(order.id);
+      await this.compensateFailedCheckout(order.id, 'expired');
     }
     if (expired.length > 0) {
       this.logger.log(`Released ${expired.length} expired stock hold(s)`);
@@ -373,7 +406,7 @@ export class PaymentsService {
       TRANSFER_RELEASE_DAYS,
     );
     for (const order of expired) {
-      await this.compensateFailedCheckout(order.id);
+      await this.compensateFailedCheckout(order.id, 'expired');
     }
     if (expired.length > 0) {
       this.logger.log(`Released ${expired.length} expired transfer(s)`);
@@ -382,11 +415,15 @@ export class PaymentsService {
   }
 
   /**
-   * Restore stock and mark the order CANCELLED. Idempotent — repeated calls
-   * after the order has already been compensated are no-ops. Releases from
-   * either live pre-payment state (MP checkout or offline transfer).
+   * Restore stock and mark the order `expired` (abandoned hold) or `cancelled`
+   * (rejected payment). Idempotent — repeated calls after the order has
+   * already been compensated are no-ops. Never cancels an order that has an
+   * approved/pending payment (the webhook may still be in flight).
    */
-  private async compensateFailedCheckout(orderId: string): Promise<void> {
+  private async compensateFailedCheckout(
+    orderId: string,
+    reason: 'expired' | 'cancelled' = 'cancelled',
+  ): Promise<void> {
     const order = await this.orderService.findById(orderId);
     if (!order) {
       this.logger.warn(`compensate: order ${orderId} not found`);
@@ -400,6 +437,18 @@ export class PaymentsService {
       return;
     }
 
+    // Never cancel an order that was actually paid: a webhook may still be in
+    // flight and already recorded an approved/pending payment.
+    if (await this.orderService.hasLivePayment(orderId)) {
+      this.logger.warn(
+        `compensate: order ${orderId} has an approved/pending payment — not cancelling`,
+      );
+      return;
+    }
+
+    const target =
+      reason === 'expired' ? OrderStatus.EXPIRED : OrderStatus.CANCELLED;
+
     const compensated = await this.dataSource.transaction(async (manager) => {
       const ids = order.items.map((i) => i.productVariationId);
       await this.productsService.lockVariationsForUpdate(manager, ids);
@@ -412,7 +461,7 @@ export class PaymentsService {
         .getRepository(Order)
         .createQueryBuilder()
         .update(Order)
-        .set({ status: OrderStatus.CANCELLED })
+        .set({ status: target })
         .where('id = :id AND status IN (:...releasable)', {
           id: orderId,
           releasable,
@@ -430,7 +479,7 @@ export class PaymentsService {
       return true;
     });
     if (compensated) {
-      this.logger.log(`Compensated stock + cancelled order ${orderId}`);
+      this.logger.log(`Compensated stock + ${target} order ${orderId}`);
     }
   }
 
@@ -536,6 +585,19 @@ export class PaymentsService {
         throw new Error(`Order not found for payment ${paymentId}`);
       }
 
+      // A rejected/failed payment releases the stock hold. Do it BEFORE
+      // recording the payment detail (which flips the order to CANCELLED),
+      // because compensation only acts on pre-payment states.
+      const rejected = ['rejected', 'failed', 'cancelled'].includes(
+        paymentData.status.toLowerCase(),
+      );
+      if (rejected) {
+        this.logger.log(
+          `Payment ${paymentId} ${paymentData.status} — restoring stock.`,
+        );
+        await this.compensateFailedCheckout(order.id, 'cancelled');
+      }
+
       // Idempotent: same transactionId is a no-op.
       await this.orderService.updateOrderPayment(order, paymentData);
 
@@ -558,14 +620,16 @@ export class PaymentsService {
           break;
         }
         case 'pending':
+        case 'in_process':
           this.logger.log(`Payment ${paymentId} is pending.`);
           break;
         case 'rejected':
+        case 'failed':
         case 'cancelled':
-          this.logger.log(
-            `Payment ${paymentId} ${paymentData.status} — restoring stock.`,
-          );
-          await this.compensateFailedCheckout(order.id);
+          // Stock already restored above (before updateOrderPayment).
+          break;
+        case 'refunded':
+          this.logger.log(`Payment ${paymentId} refunded.`);
           break;
         default:
           this.logger.warn(`Unhandled payment status: ${paymentData.status}`);

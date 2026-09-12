@@ -99,6 +99,7 @@ export class PaymentsController {
         userInfo.userId,
         userInfo.sessionId,
         contact,
+        body.idempotencyKey,
       );
     return { mode: 'mercadopago', ...preference };
   }

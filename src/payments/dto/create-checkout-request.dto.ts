@@ -56,4 +56,14 @@ export class CreateCheckoutRequestDto {
   @IsString()
   @MaxLength(500)
   deliveryAddress?: string;
+
+  @ApiPropertyOptional({
+    description:
+      'Idempotency key for this checkout attempt. A repeated call with the ' +
+      'same key reuses the live order/preference instead of creating another.',
+  })
+  @IsOptional()
+  @IsString()
+  @MaxLength(80)
+  idempotencyKey?: string;
 }

@@ -23,6 +23,10 @@ export enum OrderStatus {
   PAID_SHIPPED = 'paid_shipped',
   PAID_DELIVERED = 'paid_delivered',
   CANCELLED = 'cancelled',
+  // Abandoned/superseded checkout holds (previous MP checkouts, expired stock
+  // holds, unclaimed transfers). Hidden from the customer's order history;
+  // distinct from a user/admin CANCELLED order.
+  EXPIRED = 'expired',
   REFUNDED = 'refunded',
 }
 
@@ -72,6 +76,14 @@ export class Order {
    */
   @Column({ type: 'varchar', nullable: true })
   preferenceId: string | null;
+
+  /**
+   * Client-provided idempotency key for a checkout attempt. A re-click (same
+   * cart signature) reuses the live order/preference instead of creating a
+   * new order. Nullable: orders created before this column / offline orders.
+   */
+  @Column({ type: 'varchar', nullable: true })
+  checkoutKey: string | null;
 
   @OneToMany(() => OrderItem, (item) => item.order, { cascade: true })
   items: OrderItem[];

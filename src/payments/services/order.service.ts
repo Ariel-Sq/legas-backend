@@ -1,6 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { DataSource, EntityManager, Repository } from 'typeorm';
+import { DataSource, EntityManager, In, Repository } from 'typeorm';
 import { Order, OrderStatus } from '../entities/order.entity';
 import { CheckoutItemDto } from '../dto/checkout.dto';
 import { ProductVariation } from '@app/products/entities/product-variation.entity';
@@ -48,6 +48,7 @@ export class OrderService {
       deliveryMethod?: 'delivery' | 'pickup';
       deliveryAddress?: string;
       status?: OrderStatus;
+      checkoutKey?: string;
     },
   ): Promise<Order> {
     const orderRepo = manager.getRepository(Order);
@@ -64,6 +65,7 @@ export class OrderService {
       customerDni: data.customerDni ?? null,
       deliveryMethod: data.deliveryMethod ?? 'delivery',
       deliveryAddress: data.deliveryAddress ?? null,
+      checkoutKey: data.checkoutKey ?? null,
     });
     const savedOrder = await orderRepo.save(order);
 
@@ -139,11 +141,12 @@ export class OrderService {
       .select(['order.id', 'order.preferenceId'])
       // Both live pre-payment states: an MP checkout and an offline transfer
       // are superseded when the shopper places a new order.
+      // Only unpaid MercadoPago holds are superseded. A `pending_transfer`
+      // order is a REAL order the shopper confirmed (awaiting transfer/cash),
+      // so a later checkout must not cancel it — those are cleaned up by the
+      // long (14-day) transfer sweep, not by starting a new checkout.
       .where('order.status IN (:...statuses)', {
-        statuses: [
-          OrderStatus.PROCESSING_PAYMENT,
-          OrderStatus.PENDING_TRANSFER,
-        ],
+        statuses: [OrderStatus.PROCESSING_PAYMENT],
       });
     if (userId) {
       qb.andWhere('order.userId = :userId', { userId });
@@ -199,12 +202,81 @@ export class OrderService {
       .leftJoinAndSelect('variation.images', 'image')
       .leftJoinAndSelect('order.paymentDetails', 'paymentDetail')
       .orderBy('order.createdAt', 'DESC');
+    // `processing_payment` orders are just a stock hold created when the
+    // shopper reaches the MercadoPago step — they must not show up in the
+    // order history (abandoned checkouts would look like real orders). Same
+    // for `expired` holds (superseded/abandoned). The cron sweep cancels
+    // them after the hold window.
     if (userId) {
       qb.where('order.userId = :userId', { userId });
     } else {
       qb.where('order.sessionId = :sessionId', { sessionId });
     }
+    qb.andWhere('order.status NOT IN (:...hidden)', {
+      hidden: [OrderStatus.PROCESSING_PAYMENT, OrderStatus.EXPIRED],
+    });
     return qb.getMany();
+  }
+
+  /** Find one order owned by the shopper (or session), any status. */
+  async findForCustomerById(
+    orderId: string,
+    userId?: string,
+    sessionId?: string,
+  ): Promise<Order | null> {
+    if (!userId && !sessionId) return null;
+    const qb = this.orderRepository
+      .createQueryBuilder('order')
+      .leftJoinAndSelect('order.items', 'item')
+      .leftJoinAndSelect('item.productVariation', 'variation')
+      .leftJoinAndSelect('variation.images', 'image')
+      .leftJoinAndSelect('order.paymentDetails', 'paymentDetail')
+      .where('order.id = :orderId', { orderId });
+    if (userId) {
+      qb.andWhere('order.userId = :userId', { userId });
+    } else {
+      qb.andWhere('order.sessionId = :sessionId', { sessionId });
+    }
+    return qb.getOne();
+  }
+
+  /**
+   * Find a still-live MP checkout hold for the owner + idempotency key, so a
+   * repeated attempt (re-click / retry) can reuse its existing preference
+   * instead of creating another order.
+   */
+  async findLiveByCheckoutKey(
+    userId: string | undefined,
+    sessionId: string | undefined,
+    checkoutKey: string,
+  ): Promise<Order | null> {
+    const qb = this.orderRepository
+      .createQueryBuilder('order')
+      .where('order.checkoutKey = :checkoutKey', { checkoutKey })
+      .andWhere('order.status = :status', {
+        status: OrderStatus.PROCESSING_PAYMENT,
+      })
+      .andWhere('order.preferenceId IS NOT NULL');
+    if (userId) {
+      qb.andWhere('order.userId = :userId', { userId });
+    } else {
+      qb.andWhere('order.sessionId = :sessionId', { sessionId });
+    }
+    return qb.getOne();
+  }
+
+  /**
+   * Whether the order already has an approved/pending payment. Used to avoid
+   * cancelling an order that was actually paid (e.g. webhook still in flight)
+   * during a supersede/expiry sweep.
+   */
+  async hasLivePayment(orderId: string): Promise<boolean> {
+    const count = await this.orderRepository.manager
+      .getRepository(OrderPaymentDetail)
+      .count({
+        where: { orderId, status: In(['approved', 'pending', 'in_process']) },
+      });
+    return count > 0;
   }
 
   /**
@@ -245,13 +317,17 @@ export class OrderService {
       // MP webhook telling us the payment is "pending" shouldn't reset
       // the order. Refunds are the only signal we always honor.
       const protectedStatuses: OrderStatus[] = [
+        OrderStatus.PAID_PREPARING,
         OrderStatus.PAID_READY_TO_SHIP,
         OrderStatus.PAID_SHIPPED,
         OrderStatus.PAID_DELIVERED,
       ];
+      // Unknown MP statuses (orderStatus === null) must never change the
+      // order state — just record the payment detail above.
       const canUpdate =
-        !protectedStatuses.includes(order.status) ||
-        orderStatus === OrderStatus.REFUNDED;
+        orderStatus !== null &&
+        (!protectedStatuses.includes(order.status) ||
+          orderStatus === OrderStatus.REFUNDED);
 
       // A payment landing on a CANCELLED order means the shopper paid a
       // preference we already superseded/expired (its stock went back).
@@ -269,7 +345,7 @@ export class OrderService {
         return;
       }
 
-      if (canUpdate) {
+      if (canUpdate && orderStatus) {
         await orderRepo.update(order.id, { status: orderStatus });
       }
     });
@@ -286,7 +362,9 @@ export class OrderService {
    * later out-of-order webhook, so the caller checks the current status
    * before applying this mapping.
    */
-  private mapPaymentStatusToOrderStatus(paymentStatus: string): OrderStatus {
+  private mapPaymentStatusToOrderStatus(
+    paymentStatus: string,
+  ): OrderStatus | null {
     switch (paymentStatus.toLowerCase()) {
       case 'approved':
         return OrderStatus.PAID_PREPARING;
@@ -300,7 +378,9 @@ export class OrderService {
       case 'refunded':
         return OrderStatus.REFUNDED;
       default:
-        return OrderStatus.PROCESSING_PAYMENT;
+        // Unknown/unsupported status: don't guess — a wrong guess could
+        // downgrade a paid order. Record the payment detail only.
+        return null;
     }
   }
 
@@ -338,6 +418,7 @@ export class OrderService {
       ],
       [OrderStatus.PAID_DELIVERED]: [OrderStatus.REFUNDED],
       [OrderStatus.CANCELLED]: [],
+      [OrderStatus.EXPIRED]: [],
       [OrderStatus.REFUNDED]: [],
     };
 
