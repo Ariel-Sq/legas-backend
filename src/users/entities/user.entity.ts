@@ -74,6 +74,9 @@ export class User {
   @Column({ type: 'varchar', nullable: true })
   phoneNumber: string;
 
+  @Column({ type: 'varchar', length: 20, nullable: true })
+  dni: string;
+
   @Column({ type: 'varchar', nullable: true })
   address: string;
 
