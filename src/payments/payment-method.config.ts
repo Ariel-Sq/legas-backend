@@ -1,13 +1,14 @@
 /**
  * Checkout payment modes.
  *
- * Catalogue prices are the list price. The shopper chooses how to pay in OUR
- * checkout:
+ * Catalogue prices are the cash / transfer price (the "real" price stored in
+ * the DB). The shopper chooses how to pay in OUR checkout:
  *  - `mercadopago`: pay online now (card, debit or account money — all the
- *    same to us). List price, split into up to MERCADOPAGO_MAX_INSTALLMENTS
- *    installments financed by MP. Goes through Checkout Pro.
+ *    same to us). Gets a LIST_PRICE_MARKUP surcharge on the catalogue price,
+ *    split into up to MERCADOPAGO_MAX_INSTALLMENTS installments financed by MP.
+ *    Goes through Checkout Pro.
  *  - `offline`: transfer or cash, coordinated by WhatsApp after placing the
- *    order. Gets TRANSFER_DISCOUNT_RATE off the list price.
+ *    order. Pays the catalogue price with no markup.
  *
  * Keep these constants in sync with the frontend (lib/pricing.ts and
  * components/checkout-client.tsx).
@@ -18,11 +19,10 @@ export const CHECKOUT_PAYMENT_METHODS = ['mercadopago', 'offline'] as const;
 export type CheckoutPaymentMethod = (typeof CHECKOUT_PAYMENT_METHODS)[number];
 
 /**
- * Flat surcharge for any MercadoPago payment (card, debit, account money).
- * 0 = list price; the shopper pays MP's own financing cost when they pick
- * installments.
+ * Surcharge over the cash/transfer price for any MercadoPago payment (card,
+ * debit, account money). 0.20 = 20% markup → list price.
  */
-export const MERCADOPAGO_SURCHARGE_RATE = 0;
+export const MERCADOPAGO_SURCHARGE_RATE = 0.20;
 
 /**
  * Installments offered on the MercadoPago screen. 6 to match the advertised
@@ -32,8 +32,9 @@ export const MERCADOPAGO_SURCHARGE_RATE = 0;
 export const MERCADOPAGO_MAX_INSTALLMENTS = 6;
 
 /**
- * Discount off the list price for transfer / cash payments. 0.3 = 30% off.
+ * Discount for transfer / cash payments. 0 = no discount — the catalogue
+ * price is already the cash price.
  */
-export const TRANSFER_DISCOUNT_RATE = 0.3;
+export const TRANSFER_DISCOUNT_RATE = 0;
 
 export const DEFAULT_PAYMENT_METHOD: CheckoutPaymentMethod = 'mercadopago';
