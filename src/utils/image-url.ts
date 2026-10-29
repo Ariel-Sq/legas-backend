@@ -20,7 +20,7 @@ interface HasVariations {
 const IS_BLOB = process.env.STORAGE_TYPE === 'VERCEL_BLOB';
 const BLOB_PUBLIC_BASE = (
   process.env.BLOB_BASE_URL ||
-  'https://0mqx9o0nbcz0tpwh.public.blob.vercel-storage.com'
+  'https://vuc1kji60ug9rvd6.public.blob.vercel-storage.com'
 ).replace(/\/$/, '');
 
 // Path-style (no query string) so Next.js image optimization accepts the
