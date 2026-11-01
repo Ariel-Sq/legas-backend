@@ -92,7 +92,7 @@ export class PaymentsController {
       return { mode: 'offline', orderId: order.id };
     }
 
-    // MercadoPago (card / debit / account money): +20%, Checkout Pro.
+    // MercadoPago (card / debit / account money): +15%, Checkout Pro.
     const preference =
       await this.paymentsService.createCheckoutPreferenceFromCart(
         cart,

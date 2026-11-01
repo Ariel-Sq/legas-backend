@@ -4,7 +4,7 @@
  * Catalogue prices are the cash / transfer price ("precio de contado").
  * The shopper chooses how to pay in OUR checkout:
  *  - `mercadopago`: pay online now (card, debit or account money — all the
- *    same to us). Gets a 20% surcharge (list price), split into up to
+ *    same to us). Gets a 15% surcharge (list price), split into up to
  *    MERCADOPAGO_MAX_INSTALLMENTS installments financed by MP.
  *    Goes through Checkout Pro.
  *  - `offline`: transfer or cash, coordinated by WhatsApp after placing the
@@ -20,9 +20,9 @@ export type CheckoutPaymentMethod = (typeof CHECKOUT_PAYMENT_METHODS)[number];
 
 /**
  * Surcharge for any MercadoPago payment over the cash price.
- * 0.20 = 20% → list price.
+ * 0.15 = 15% → list price.
  */
-export const MERCADOPAGO_SURCHARGE_RATE = 0.20;
+export const MERCADOPAGO_SURCHARGE_RATE = 0.15;
 
 /**
  * Installments offered on the MercadoPago screen.

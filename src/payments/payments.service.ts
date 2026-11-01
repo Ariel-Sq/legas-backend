@@ -30,7 +30,7 @@ interface PreferenceItem {
 }
 
 // Surcharge rates and per-method MP restrictions live in
-// payment-method.config.ts (account_money +10%, credit_card +20%).
+// payment-method.config.ts (account_money +10%, credit_card +15%).
 
 /**
  * Stock-hold lifecycle. Checkout reserves stock BEFORE payment, so an
