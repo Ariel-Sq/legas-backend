@@ -71,6 +71,21 @@ export class Order {
   deliveryAddress: string | null;
 
   /**
+   * Pickup deposit (cash/transfer + retiro en persona): 50% paid by transfer
+   * to reserve the piece, balance collected when the shopper picks it up.
+   * Both stay null for shipments and for MercadoPago orders.
+   */
+  @Column('decimal', { precision: 10, scale: 2, nullable: true })
+  depositAmount: number | null;
+
+  @Column('decimal', { precision: 10, scale: 2, nullable: true })
+  balanceAmount: number | null;
+
+  /** Set when the shop confirms the deposit transfer landed. */
+  @Column({ type: 'timestamptz', nullable: true })
+  depositPaidAt: Date | null;
+
+  /**
    * MercadoPago preference id — lets a superseded checkout expire its MP
    * preference so the old payment link stops being payable.
    */

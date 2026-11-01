@@ -49,6 +49,8 @@ export class OrderService {
       deliveryAddress?: string;
       status?: OrderStatus;
       checkoutKey?: string;
+      depositAmount?: number;
+      balanceAmount?: number;
     },
   ): Promise<Order> {
     const orderRepo = manager.getRepository(Order);
@@ -66,6 +68,8 @@ export class OrderService {
       deliveryMethod: data.deliveryMethod ?? 'delivery',
       deliveryAddress: data.deliveryAddress ?? null,
       checkoutKey: data.checkoutKey ?? null,
+      depositAmount: data.depositAmount ?? null,
+      balanceAmount: data.balanceAmount ?? null,
     });
     const savedOrder = await orderRepo.save(order);
 

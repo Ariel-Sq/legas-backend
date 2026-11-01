@@ -16,6 +16,7 @@ import { Order, OrderStatus } from './entities/order.entity';
 import {
   MERCADOPAGO_SURCHARGE_RATE,
   MERCADOPAGO_MAX_INSTALLMENTS,
+  PICKUP_DEPOSIT_RATE,
   TRANSFER_DISCOUNT_RATE,
 } from './payment-method.config';
 import { EmailService } from '@app/notifications/email.service';
@@ -289,6 +290,16 @@ export class PaymentsService {
       Math.round(Number(cart.totalPrice) * (1 - TRANSFER_DISCOUNT_RATE) * 100) /
       100;
 
+    // Pickup + cash/transfer requires a 50% deposit by transfer; the balance is
+    // collected on pickup. Shipments and MercadoPago never use a deposit.
+    const isPickup = contact.deliveryMethod === 'pickup';
+    const depositAmount = isPickup
+      ? Math.round(totalAmount * PICKUP_DEPOSIT_RATE * 100) / 100
+      : undefined;
+    const balanceAmount = isPickup
+      ? Math.round((totalAmount - depositAmount!) * 100) / 100
+      : undefined;
+
     const order = await this.dataSource.transaction(async (manager) => {
       const ids = checkoutItems.map((i) => i.id);
       await this.productsService.lockVariationsForUpdate(manager, ids);
@@ -310,6 +321,8 @@ export class PaymentsService {
         deliveryMethod: contact.deliveryMethod,
         deliveryAddress: contact.deliveryAddress,
         status: OrderStatus.PENDING_TRANSFER,
+        depositAmount,
+        balanceAmount,
       });
     });
 

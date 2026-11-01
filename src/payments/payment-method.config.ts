@@ -30,6 +30,13 @@ export const MERCADOPAGO_SURCHARGE_RATE = 0.15;
 export const MERCADOPAGO_MAX_INSTALLMENTS = 6;
 
 /**
+ * Deposit for cash/transfer orders picked up at the shop: 50% by transfer to
+ * reserve the piece, balance on pickup. Exact half — no rounding. Shipments
+ * never use a deposit, and MercadoPago always pays the full amount up front.
+ */
+export const PICKUP_DEPOSIT_RATE = 0.5;
+
+/**
  * Transfer / cash discount: 0 = catalogue price is already the cash price.
  */
 export const TRANSFER_DISCOUNT_RATE = 0;
