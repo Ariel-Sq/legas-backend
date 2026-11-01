@@ -20,7 +20,11 @@ import {
   TRANSFER_DISCOUNT_RATE,
 } from './payment-method.config';
 import { EmailService } from '@app/notifications/email.service';
-import { orderEmailFor } from '@app/notifications/order-emails';
+import {
+  orderEmailFor,
+  shopNotificationEmail,
+  shopOrderEmailFor,
+} from '@app/notifications/order-emails';
 
 interface PreferenceItem {
   id: string;
@@ -339,6 +343,7 @@ export class PaymentsService {
         );
       }
     }
+    await this.notifyShop(order, 'new_order');
     return order;
   }
 
@@ -433,6 +438,26 @@ export class PaymentsService {
    * already been compensated are no-ops. Never cancels an order that has an
    * approved/pending payment (the webhook may still be in flight).
    */
+  /**
+   * Internal notification to the shop. Fire-and-forget: a mail hiccup must
+   * never break checkout or a webhook.
+   */
+  private async notifyShop(
+    order: Order,
+    event: 'new_order' | 'payment_approved' | 'payment_rejected',
+  ): Promise<void> {
+    try {
+      const email = shopOrderEmailFor(order, event);
+      await this.emailService.send(
+        shopNotificationEmail(),
+        email.subject,
+        email.text,
+      );
+    } catch (error: any) {
+      this.logger.warn(`shop notification failed: ${error.message}`);
+    }
+  }
+
   private async compensateFailedCheckout(
     orderId: string,
     reason: 'expired' | 'cancelled' = 'cancelled',
@@ -630,6 +655,8 @@ export class PaymentsService {
               );
             }
           }
+          const approved = await this.orderService.findById(order.id);
+          if (approved) await this.notifyShop(approved, 'payment_approved');
           break;
         }
         case 'pending':
@@ -638,9 +665,14 @@ export class PaymentsService {
           break;
         case 'rejected':
         case 'failed':
-        case 'cancelled':
+        case 'cancelled': {
           // Stock already restored above (before updateOrderPayment).
+          const rejectedOrder = await this.orderService.findById(order.id);
+          if (rejectedOrder) {
+            await this.notifyShop(rejectedOrder, 'payment_rejected');
+          }
           break;
+        }
         case 'refunded':
           this.logger.log(`Payment ${paymentId} refunded.`);
           break;

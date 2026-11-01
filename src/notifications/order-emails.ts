@@ -1,4 +1,4 @@
-import { OrderStatus } from '@app/payments/entities/order.entity';
+import { Order, OrderStatus } from '@app/payments/entities/order.entity';
 
 export interface OrderEmailContent {
   subject: string;
@@ -117,4 +117,86 @@ export function orderWhatsAppFor(
     default:
       return null;
   }
+}
+
+/** Events that get an internal notification to the shop. */
+export type ShopOrderEvent =
+  | 'new_order'
+  | 'payment_approved'
+  | 'payment_rejected';
+
+/** Address of the shop (overridable so a staging deploy doesn't spam it). */
+export function shopNotificationEmail(): string {
+  return process.env.SHOP_NOTIFICATION_EMAIL || 'legasmuebles@gmail.com';
+}
+
+const EVENT_TITLES: Record<ShopOrderEvent, string> = {
+  new_order: 'Pedido nuevo',
+  payment_approved: 'Pago acreditado',
+  payment_rejected: 'Pago rechazado',
+};
+
+const money = (value: number | string) =>
+  '$ ' + Math.round(Number(value)).toLocaleString('es-AR');
+
+/**
+ * Internal email to the shop: every event that needs action (new order,
+ * approved payment, rejected payment) with the full detail in the body so it
+ * can be read on a phone without opening the site.
+ */
+export function shopOrderEmailFor(
+  order: Order,
+  event: ShopOrderEvent,
+): OrderEmailContent {
+  const shortId = order.id.slice(0, 8).toUpperCase();
+  const items = (order.items || [])
+    .map(
+      (item) =>
+        `• ${item.quantity} × ${item.title} — ${money(
+          Number(item.unitPrice) * item.quantity,
+        )}`,
+    )
+    .join('\n');
+
+  const delivery =
+    order.deliveryMethod === 'pickup'
+      ? 'Retiro en persona (Juan de Herrera 2651, Villa de Mayo)'
+      : `Envío a domicilio${order.deliveryAddress ? `:\n${order.deliveryAddress}` : ''}`;
+
+  const depositLine =
+    order.depositAmount && Number(order.depositAmount) > 0
+      ? `\nSeña (50%): ${money(order.depositAmount)}` +
+        `\nSaldo al retirar: ${money(
+          order.balanceAmount ?? Number(order.totalAmount) - Number(order.depositAmount),
+        )}`
+      : '';
+
+  const action = {
+    new_order:
+      order.deliveryMethod === 'pickup' && order.depositAmount
+        ? 'Escribile por WhatsApp para pasarle los datos de la transferencia de la seña (48 hs para acreditarla).'
+        : 'Escribile por WhatsApp para coordinar el pago y la entrega.',
+    payment_approved:
+      'El pago quedó acreditado: el pedido entra en fabricación. Confirmale por WhatsApp.',
+    payment_rejected:
+      'El pago no se acreditó y el stock se liberó. Si el cliente insiste, que vuelva a intentar.',
+  }[event];
+
+  return {
+    subject: `[${EVENT_TITLES[event]}] Pedido ${shortId} — Legas Muebles`,
+    text:
+      `${EVENT_TITLES[event]} en la tienda.\n\n` +
+      `Pedido: ${shortId}\n` +
+      `Estado: ${order.status}\n` +
+      `Fecha: ${new Date().toLocaleString('es-AR', { timeZone: 'America/Argentina/Buenos_Aires' })}\n\n` +
+      `CLIENTE\n` +
+      `Email: ${order.customerEmail ?? '—'}\n` +
+      `Teléfono: ${order.customerPhone ?? '—'}\n` +
+      `DNI: ${order.customerDni ?? '—'}\n\n` +
+      `ENTREGA\n${delivery}\n\n` +
+      `PRODUCTOS\n${items || '—'}\n\n` +
+      `Total: ${money(order.totalAmount)}${depositLine}\n\n` +
+      `QUÉ HACER\n${action}\n\n` +
+      `Pedidos: ${ORDERS_URL}\n\n— Aviso automático de la tienda`,
+  };
 }
