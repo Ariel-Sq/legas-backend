@@ -5,7 +5,7 @@ export interface OrderEmailContent {
   text: string;
 }
 
-const WHATSAPP = 'https://wa.me/5491173666370';
+const WHATSAPP = 'https://wa.me/5491134414929';
 
 /**
  * Public storefront URL for links inside the emails. Configurable via

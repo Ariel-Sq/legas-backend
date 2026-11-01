@@ -2,6 +2,7 @@ import {
   Injectable,
   NotFoundException,
   BadRequestException,
+  UnauthorizedException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
@@ -14,6 +15,14 @@ import { rewriteCartItemImageUrls } from '@app/utils/image-url';
 import { randomUUID as uuidv4 } from 'node:crypto';
 
 const toMoney = (n: number | string) => Math.round(Number(n) * 100) / 100;
+
+/** True for Postgres FK violations (e.g. carts.userId → users.id). */
+function isForeignKeyViolation(error: unknown): boolean {
+  const code =
+    (error as { driverError?: { code?: string } })?.driverError?.code ??
+    (error as { code?: string })?.code;
+  return code === '23503';
+}
 
 /**
  * Service for managing shopping cart operations
@@ -86,7 +95,20 @@ export class CartService {
       newCart.totalItems = 0;
       newCart.totalPrice = 0;
 
-      cart = await this.cartRepository.save(newCart);
+      try {
+        cart = await this.cartRepository.save(newCart);
+      } catch (error) {
+        // A valid JWT can outlive its user row (account deleted, DB restored
+        // from an older dump). The FK on carts.userId then rejects the insert;
+        // surface it as a 401 so the client can re-authenticate instead of
+        // reporting an opaque 500.
+        if (isForeignKeyViolation(error)) {
+          throw new UnauthorizedException(
+            'Tu sesión quedó desactualizada. Volvé a iniciar sesión.',
+          );
+        }
+        throw error;
+      }
     }
 
     return this.withImageUrls(cart);
