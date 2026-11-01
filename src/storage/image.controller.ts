@@ -85,7 +85,12 @@ export class ImageController {
           : 'image/jpeg';
     res.set({
       'Content-Type': contentType,
-      'Cache-Control': 'public, max-age=3600',
+      // In development images are edited in place, so never let the browser
+      // or the image optimizer keep a stale copy.
+      'Cache-Control':
+        process.env.NODE_ENV === 'development'
+          ? 'no-cache, no-store, must-revalidate'
+          : 'public, max-age=3600',
     });
     res.send(imageBuffer);
   }
