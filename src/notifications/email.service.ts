@@ -3,10 +3,16 @@ import * as nodemailer from 'nodemailer';
 import type { Transporter } from 'nodemailer';
 
 /**
- * Thin SMTP mailer, env-gated: when SMTP_USER/SMTP_PASS are not set the
- * service logs and skips instead of failing — notifications must never
- * break a webhook or checkout. Designed for a Gmail app password
- * (smtp.gmail.com:465) but works with any SMTP provider.
+ * Thin SMTP mailer, env-gated: when no credentials are set the service logs
+ * and skips instead of failing — notifications must never break a webhook or
+ * checkout.
+ *
+ * Two auth modes, in order of preference:
+ *  1. Gmail OAuth2 (GOOGLE_CLIENT_ID + GOOGLE_CLIENT_SECRET +
+ *     GOOGLE_REFRESH_TOKEN + SMTP_USER). Needed when the Google account can't
+ *     create an app password; nodemailer refreshes the access token itself.
+ *  2. Plain SMTP user/password (SMTP_USER + SMTP_PASS), e.g. an app password
+ *     or any transactional provider (Brevo, Resend…).
  */
 @Injectable()
 export class EmailService {
@@ -16,6 +22,27 @@ export class EmailService {
   constructor() {
     const user = process.env.SMTP_USER;
     const pass = process.env.SMTP_PASS;
+    const clientId = process.env.GOOGLE_CLIENT_ID;
+    const clientSecret = process.env.GOOGLE_CLIENT_SECRET;
+    const refreshToken = process.env.GOOGLE_REFRESH_TOKEN;
+
+    if (user && clientId && clientSecret && refreshToken) {
+      this.transporter = nodemailer.createTransport({
+        host: 'smtp.gmail.com',
+        port: 465,
+        secure: true,
+        auth: {
+          type: 'OAuth2',
+          user,
+          clientId,
+          clientSecret,
+          refreshToken,
+        },
+      });
+      this.logger.log(`Email notifications enabled via Gmail OAuth2 (${user})`);
+      return;
+    }
+
     if (user && pass) {
       this.transporter = nodemailer.createTransport({
         host: process.env.SMTP_HOST || 'smtp.gmail.com',
@@ -24,11 +51,12 @@ export class EmailService {
         auth: { user, pass },
       });
       this.logger.log(`Email notifications enabled (${user})`);
-    } else {
-      this.logger.warn(
-        'SMTP_USER/SMTP_PASS not set — email notifications disabled',
-      );
+      return;
     }
+
+    this.logger.warn(
+      'No mail credentials (OAuth2 or SMTP_USER/SMTP_PASS) — email notifications disabled',
+    );
   }
 
   get enabled(): boolean {
