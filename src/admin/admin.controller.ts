@@ -17,6 +17,7 @@ import { ApiOperation, ApiTags } from '@nestjs/swagger';
 import { AdminGuard, Roles, type AdminActor } from './admin.guard';
 import { AdminService } from './admin.service';
 import {
+  CreateVariationDto,
   UpdateImageDto,
   UpdateProductDto,
   UpdateUserRoleDto,
@@ -69,6 +70,16 @@ export class AdminController {
     @Req() req: any,
   ) {
     return this.adminService.updateProduct(id, dto, this.actor(req));
+  }
+
+  @Post('products/:id/variations')
+  @Roles(UserRole.OWNER, UserRole.ADMIN, UserRole.EDITOR)
+  createVariation(
+    @Param('id') id: string,
+    @Body() dto: CreateVariationDto,
+    @Req() req: any,
+  ) {
+    return this.adminService.createVariation(id, dto, this.actor(req));
   }
 
   @Patch('variations/:id')

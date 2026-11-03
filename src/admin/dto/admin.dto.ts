@@ -41,6 +41,22 @@ export class UpdateProductDto {
   categoryIds?: string[];
 }
 
+export class CreateVariationDto {
+  /** Size as typed by the shop, e.g. "100x60" or "100x60x40". */
+  @IsString()
+  @MaxLength(40)
+  medida: string;
+
+  @IsNumber({ maxDecimalPlaces: 2 })
+  @Min(0)
+  price: number;
+
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  stock?: number;
+}
+
 export class UpdateVariationDto {
   @IsOptional()
   @IsString()

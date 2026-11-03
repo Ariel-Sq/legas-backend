@@ -14,6 +14,7 @@ import { User, UserRole } from '@app/users/entities/user.entity';
 import type { IStorageService } from '@app/storage/storage.interface';
 import { AdminAuditService } from './admin-audit.service';
 import {
+  CreateVariationDto,
   UpdateImageDto,
   UpdateProductDto,
   UpdateVariationDto,
@@ -177,6 +178,59 @@ export class AdminService {
       entity: 'product',
       entityId: id,
       payload: dto,
+    });
+    return saved;
+  }
+
+  /**
+   * New size/price for an existing product. The SKU and the display name are
+   * derived from the template so the catalogue stays consistent.
+   */
+  async createVariation(
+    productId: string,
+    dto: CreateVariationDto,
+    actor: AdminActor,
+  ) {
+    const template = await this.templates.findOne({
+      where: { id: productId },
+      relations: ['variations'],
+    });
+    if (!template) throw new NotFoundException('Producto no encontrado');
+
+    const medida = dto.medida.trim().replace(/\s+/g, '');
+    if (!/^[0-9]+(x[0-9]+){1,2}$/i.test(medida)) {
+      throw new BadRequestException(
+        'La medida debe tener el formato 100x60 o 100x60x40',
+      );
+    }
+
+    const sku = `${template.slug}-${medida.toLowerCase()}`;
+    const exists = await this.variations.findOne({ where: { sku } });
+    if (exists) {
+      throw new BadRequestException(`Ya existe una variante con la medida ${medida}`);
+    }
+
+    const material =
+      (template.variations?.[0]?.attributes?.material as string) ?? 'Álamo';
+
+    const variation = this.variations.create({
+      template_id: template.id,
+      sku,
+      name: `${template.name} · ${medida} cm`,
+      price: dto.price,
+      stock: dto.stock ?? 10,
+      attributes: { medida: `${medida} cm`, material },
+      sort_order: (template.variations?.length ?? 0),
+    });
+    const saved = await this.variations.save(variation);
+
+    await this.audit.log({
+      actorId: actor.id,
+      actorEmail: actor.email,
+      action: 'create',
+      entity: 'variation',
+      entityId: saved.id,
+      payload: { medida, price: dto.price, sku },
     });
     return saved;
   }
