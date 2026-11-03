@@ -13,6 +13,8 @@ import * as bcrypt from 'bcrypt';
 export enum UserRole {
   OWNER = 'owner',
   ADMIN = 'admin',
+  /** Can edit the catalogue (products, prices, images) but not users. */
+  EDITOR = 'editor',
   CUSTOMER = 'customer',
 }
 

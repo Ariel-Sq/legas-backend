@@ -7,6 +7,7 @@ import { HealthModule } from '@app/health/health.module';
 import { ProductsModule } from '@app/products/products.module';
 import { StorageModule } from '@app/storage/storage.module';
 import { UsersModule } from '@app/users/users.module';
+import { AdminModule } from '@app/admin/admin.module';
 import { CartModule } from '@app/cart/cart.module';
 import { PaymentsModule } from '@app/payments/payments.module';
 import { CacheModule } from '@app/cache/cache.module';
@@ -59,6 +60,7 @@ import { THROTTLE_LIMIT, THROTTLE_TTL } from '@app/utils/environments';
     ProductsModule,
     StorageModule,
     UsersModule,
+    AdminModule,
     CartModule,
     PaymentsModule,
     CacheModule,
