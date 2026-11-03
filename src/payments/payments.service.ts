@@ -208,7 +208,7 @@ export class PaymentsService {
           ),
         },
         auto_return: 'approved',
-        statement_descriptor: 'Ecommerce',
+        statement_descriptor: 'LEGAS MUEBLES',
         external_reference: order.id,
         notification_url: this.configService.getOrThrow<string>(
           'MERCADO_PAGO_WEBHOOK_URL',
