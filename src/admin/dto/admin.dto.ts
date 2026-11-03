@@ -1,6 +1,7 @@
 import {
   IsArray,
   IsBoolean,
+  IsEmail,
   IsIn,
   IsInt,
   IsNumber,
@@ -121,6 +122,27 @@ export class UpdateImageDto {
 }
 
 export class UpdateUserRoleDto {
+  @IsIn([UserRole.ADMIN, UserRole.EDITOR, UserRole.CUSTOMER])
+  role: UserRole;
+}
+
+export class UpdateOrderStatusDto {
+  @IsIn([
+    'pending_transfer',
+    'paid_preparing',
+    'paid_ready_to_ship',
+    'paid_shipped',
+    'paid_delivered',
+    'cancelled',
+    'refunded',
+  ])
+  status: string;
+}
+
+export class InviteUserDto {
+  @IsEmail()
+  email: string;
+
   @IsIn([UserRole.ADMIN, UserRole.EDITOR, UserRole.CUSTOMER])
   role: UserRole;
 }

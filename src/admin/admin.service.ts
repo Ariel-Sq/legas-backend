@@ -1,5 +1,6 @@
 import {
   BadRequestException,
+  ForbiddenException,
   Inject,
   Injectable,
   NotFoundException,
@@ -10,13 +11,17 @@ import { ProductTemplate } from '@app/products/entities/product-template.entity'
 import { ProductVariation } from '@app/products/entities/product-variation.entity';
 import { ProductImage } from '@app/products/entities/product-image.entity';
 import { Category } from '@app/categories/entities/category.entity';
-import { User, UserRole } from '@app/users/entities/user.entity';
+import { User, UserRole, AuthProvider } from '@app/users/entities/user.entity';
+import { Order, OrderStatus } from '@app/payments/entities/order.entity';
+import { EmailService } from '@app/notifications/email.service';
 import type { IStorageService } from '@app/storage/storage.interface';
 import { AdminAuditService } from './admin-audit.service';
 import {
   CreateProductDto,
   CreateVariationDto,
+  InviteUserDto,
   UpdateImageDto,
+  UpdateOrderStatusDto,
   UpdateProductDto,
   UpdateVariationDto,
   UpdateUserRoleDto,
@@ -24,6 +29,7 @@ import {
 import type { AdminActor } from './admin.guard';
 
 const IMAGE_PATH = 'products/legas';
+const MAX_IMAGES_PER_VARIATION = 6;
 const MAX_IMAGE_BYTES = 4 * 1024 * 1024;
 const ALLOWED_IMAGE_TYPES = ['image/webp', 'image/jpeg', 'image/png'];
 
@@ -44,6 +50,7 @@ export class AdminService {
     private readonly storage: IStorageService,
     private readonly audit: AdminAuditService,
     private readonly dataSource: DataSource,
+    private readonly email: EmailService,
   ) {}
 
   // ----- Reads -----
@@ -325,10 +332,16 @@ export class AdminService {
     });
     if (!variation) throw new NotFoundException('Variante no encontrada');
 
-    const uploaded = await this.storage.uploadFile(file, IMAGE_PATH);
     const existing = await this.images.find({
       where: { variation_id: variationId },
     });
+    if (existing.length >= MAX_IMAGES_PER_VARIATION) {
+      throw new BadRequestException(
+        `Máximo ${MAX_IMAGES_PER_VARIATION} fotos por variante`,
+      );
+    }
+
+    const uploaded = await this.storage.uploadFile(file, IMAGE_PATH);
 
     const image = this.images.create({
       url: `/api/images?path=${uploaded.path}`,
@@ -438,6 +451,135 @@ export class AdminService {
       entityId: id,
       payload: { role: dto.role, email: user.email },
     });
+    return { id: saved.id, email: saved.email, role: saved.role };
+  }
+
+  async deleteProduct(id: string, actor: AdminActor) {
+    const template = await this.templates.findOne({ where: { id } });
+    if (!template) throw new NotFoundException('Producto no encontrado');
+
+    await this.templates.remove(template);
+    await this.audit.log({
+      actorId: actor.id,
+      actorEmail: actor.email,
+      action: 'delete',
+      entity: 'product',
+      entityId: id,
+      payload: { name: template.name, slug: template.slug },
+    });
+    return { ok: true };
+  }
+
+  // ----- Orders -----
+
+  async listOrders(status?: string) {
+    const rows = await this.dataSource.query(
+      `SELECT o.id, o.status, o."totalAmount", o."customerEmail", o."customerPhone",
+              o."deliveryMethod", o."deliveryAddress", o."depositAmount",
+              o."balanceAmount", o."depositPaidAt", o."createdAt",
+              COALESCE(SUM(oi.quantity), 0)::int AS items,
+              STRING_AGG(oi.title, ' · ') AS titles
+         FROM orders o
+         LEFT JOIN order_items oi ON oi."orderId" = o.id
+         ${status ? 'WHERE o.status = $1' : ''}
+         GROUP BY o.id
+         ORDER BY o."createdAt" DESC
+         LIMIT 200`,
+      status ? [status] : [],
+    );
+    return rows;
+  }
+
+  async updateOrderStatus(
+    id: string,
+    dto: UpdateOrderStatusDto,
+    actor: AdminActor,
+  ) {
+    const order = await this.dataSource.getRepository(Order).findOne({
+      where: { id },
+    });
+    if (!order) throw new NotFoundException('Pedido no encontrado');
+
+    order.status = dto.status as OrderStatus;
+    await this.dataSource.getRepository(Order).save(order);
+    await this.audit.log({
+      actorId: actor.id,
+      actorEmail: actor.email,
+      action: 'update-status',
+      entity: 'order',
+      entityId: id,
+      payload: { status: dto.status },
+    });
+    return { ok: true, status: order.status };
+  }
+
+  async markDepositPaid(id: string, actor: AdminActor) {
+    await this.dataSource.query(
+      `UPDATE orders SET "depositPaidAt" = now(), status = 'paid_preparing', "updatedAt" = now() WHERE id = $1`,
+      [id],
+    );
+    await this.audit.log({
+      actorId: actor.id,
+      actorEmail: actor.email,
+      action: 'deposit-paid',
+      entity: 'order',
+      entityId: id,
+    });
+    return { ok: true };
+  }
+
+  // ----- Users -----
+
+  /**
+   * Pre-authorise an email with a role. The person then signs in with Google
+   * (which creates/links their user row) and already has the permissions.
+   */
+  async inviteUser(dto: InviteUserDto, actor: AdminActor) {
+    if (!actor.isOwner) {
+      throw new ForbiddenException('Solo el dueño puede invitar usuarios');
+    }
+    const email = dto.email.trim().toLowerCase();
+
+    let user = await this.users.findOne({ where: { email } });
+    if (!user) {
+      user = this.users.create({
+        email,
+        firstName: email.split('@')[0],
+        lastName: '',
+        role: dto.role as UserRole,
+        authProvider: AuthProvider.GOOGLE,
+      });
+    } else {
+      user.role = dto.role as UserRole;
+    }
+    const saved = await this.users.save(user);
+
+    await this.audit.log({
+      actorId: actor.id,
+      actorEmail: actor.email,
+      action: 'invite',
+      entity: 'user',
+      entityId: saved.id,
+      payload: { email, role: dto.role },
+    });
+
+    const site =
+      process.env.FRONTEND_URL?.replace(/\/$/, '') ?? 'https://legasmuebles.com';
+    const roleLabel =
+      dto.role === UserRole.ADMIN
+        ? 'administrador'
+        : dto.role === UserRole.EDITOR
+          ? 'editor'
+          : 'cliente';
+    void this.email.send(
+      saved.email,
+      'Te invitaron al panel de Legas Muebles',
+      `Hola!\n\nTe habilitamos acceso al panel de Legas Muebles con rol de ${roleLabel}.\n\n` +
+        `Para entrar: andá a ${site}, iniciá sesión con Google usando este mismo email ` +
+        `y después abrí ${site}/admin.\n\n` +
+        `Si no esperabas este mensaje, ignorá este correo.\n\n— Legas Muebles`,
+    );
+
     return { id: saved.id, email: saved.email, role: saved.role };
   }
 }

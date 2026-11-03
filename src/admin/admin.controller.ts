@@ -19,7 +19,9 @@ import { AdminService } from './admin.service';
 import {
   CreateProductDto,
   CreateVariationDto,
+  InviteUserDto,
   UpdateImageDto,
+  UpdateOrderStatusDto,
   UpdateProductDto,
   UpdateUserRoleDto,
   UpdateVariationDto,
@@ -124,6 +126,40 @@ export class AdminController {
   @Roles(UserRole.OWNER, UserRole.ADMIN, UserRole.EDITOR)
   deleteImage(@Param('id') id: string, @Req() req: any) {
     return this.adminService.deleteImage(id, this.actor(req));
+  }
+
+  @Delete('products/:id')
+  @Roles(UserRole.OWNER, UserRole.ADMIN)
+  deleteProduct(@Param('id') id: string, @Req() req: any) {
+    return this.adminService.deleteProduct(id, this.actor(req));
+  }
+
+  @Get('orders')
+  @Roles(UserRole.OWNER, UserRole.ADMIN, UserRole.EDITOR)
+  listOrders(@Query('status') status?: string) {
+    return this.adminService.listOrders(status);
+  }
+
+  @Patch('orders/:id/status')
+  @Roles(UserRole.OWNER, UserRole.ADMIN)
+  updateOrderStatus(
+    @Param('id') id: string,
+    @Body() dto: UpdateOrderStatusDto,
+    @Req() req: any,
+  ) {
+    return this.adminService.updateOrderStatus(id, dto, this.actor(req));
+  }
+
+  @Patch('orders/:id/deposit')
+  @Roles(UserRole.OWNER, UserRole.ADMIN)
+  markDepositPaid(@Param('id') id: string, @Req() req: any) {
+    return this.adminService.markDepositPaid(id, this.actor(req));
+  }
+
+  @Post('users/invite')
+  @Roles(UserRole.OWNER)
+  inviteUser(@Body() dto: InviteUserDto, @Req() req: any) {
+    return this.adminService.inviteUser(dto, this.actor(req));
   }
 
   @Get('users')
