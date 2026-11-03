@@ -13,6 +13,32 @@ import {
 } from 'class-validator';
 import { UserRole } from '@app/users/entities/user.entity';
 
+export class CreateProductDto {
+  @IsString()
+  @MaxLength(255)
+  name: string;
+
+  @IsOptional()
+  @IsString()
+  description?: string;
+
+  @IsArray()
+  @IsUUID('4', { each: true })
+  categoryIds: string[];
+
+  @IsOptional()
+  @IsBoolean()
+  is_active?: boolean;
+
+  @IsOptional()
+  @IsBoolean()
+  is_featured?: boolean;
+
+  @IsOptional()
+  @IsObject()
+  specifications?: Record<string, string>;
+}
+
 export class UpdateProductDto {
   @IsOptional()
   @IsString()

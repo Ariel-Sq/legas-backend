@@ -14,6 +14,7 @@ import { User, UserRole } from '@app/users/entities/user.entity';
 import type { IStorageService } from '@app/storage/storage.interface';
 import { AdminAuditService } from './admin-audit.service';
 import {
+  CreateProductDto,
   CreateVariationDto,
   UpdateImageDto,
   UpdateProductDto,
@@ -142,6 +143,56 @@ export class AdminService {
   }
 
   // ----- Writes -----
+
+  /**
+   * Create an empty product (template). Variants and photos are added from the
+   * editor right after, so the shop never gets a product without price by
+   * mistake: it starts hidden unless asked otherwise.
+   */
+  async createProduct(dto: CreateProductDto, actor: AdminActor) {
+    const categories = await this.categories.findBy({
+      id: In(dto.categoryIds),
+    });
+    if (categories.length === 0) {
+      throw new BadRequestException('Elegí al menos una categoría');
+    }
+
+    const base = dto.name
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, '-')
+      .replace(/^-+|-+$/g, '')
+      .slice(0, 80) || 'producto';
+
+    let slug = base;
+    let suffix = 2;
+    while (await this.templates.findOne({ where: { slug } })) {
+      slug = `${base}-${suffix}`;
+      suffix += 1;
+    }
+
+    const template = this.templates.create({
+      name: dto.name.trim(),
+      slug,
+      description: dto.description ?? '',
+      specifications: dto.specifications ?? {},
+      is_active: dto.is_active ?? false,
+      is_featured: dto.is_featured ?? false,
+      categories,
+    });
+    const saved = await this.templates.save(template);
+
+    await this.audit.log({
+      actorId: actor.id,
+      actorEmail: actor.email,
+      action: 'create',
+      entity: 'product',
+      entityId: saved.id,
+      payload: { name: saved.name, slug: saved.slug },
+    });
+    return saved;
+  }
 
   async updateProduct(id: string, dto: UpdateProductDto, actor: AdminActor) {
     const template = await this.templates.findOne({
