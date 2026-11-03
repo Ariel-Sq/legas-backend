@@ -8,7 +8,6 @@ import { UsersService } from '@app/users/users.service';
 import { CheckoutItemDto } from './dto/checkout.dto';
 import { PreferenceRequest } from 'mercadopago/dist/clients/preference/commonTypes';
 import { PaymentData } from './types/payment.types';
-import { WebhookNotificationDto } from './dto/webhook.dto';
 import { OrderService } from './services/order.service';
 import { CartService } from '@app/cart/cart.service';
 import { Cart } from '@app/cart/entities/cart.entity';
@@ -550,29 +549,47 @@ export class PaymentsService {
     };
   }
 
-  async handleWebhookNotification(webhookData: WebhookNotificationDto) {
+  /**
+   * Accepts both MercadoPago notification formats:
+   *  - current webhooks: JSON body with `type` + `data.id`
+   *  - legacy IPN ("Pago (legacy)"): query params `topic=payment&id=123`
+   * Either way the payment is re-read from the MP API, so the order state is
+   * always driven by MercadoPago and never by the payload.
+   */
+  async handleWebhookNotification(
+    body: Record<string, any> = {},
+    query: Record<string, string> = {},
+  ) {
+    const type = (body.type ?? query.topic ?? query.type ?? '') as string;
+    const paymentId =
+      (body?.data?.id as string | number | undefined) ??
+      query['data.id'] ??
+      query.id;
+
     this.logger.log(
-      `Received webhook notification: ${JSON.stringify(webhookData)}`,
+      `Webhook received: type=${type} paymentId=${paymentId ?? 'n/a'} ` +
+        `format=${body.type ? 'webhook' : 'legacy'}`,
     );
 
-    try {
-      switch (webhookData.type) {
-        case 'payment':
-          await this.handlePaymentNotification(webhookData.data.id);
-          break;
-        default:
-          this.logger.warn(
-            `Unhandled webhook notification type: ${webhookData.type}`,
-          );
-      }
+    if (type !== 'payment' || !paymentId) {
+      this.logger.warn(
+        `Ignoring webhook type="${type}" (paymentId=${paymentId ?? 'n/a'})`,
+      );
+      return { status: 'success' };
+    }
 
+    try {
+      await this.handlePaymentNotification(paymentId);
       return { status: 'success' };
     } catch (error: any) {
       this.logger.error(
         `Error processing webhook: ${error.message}`,
         error.stack,
       );
-      throw new Error(`Failed to process webhook: ${error.message}`);
+      // Ack anyway: MP retries on non-2xx, and a persistent error would just
+      // flood the endpoint. The payment stays pending and is reconciled by the
+      // next notification or a manual check.
+      return { status: 'error' };
     }
   }
 

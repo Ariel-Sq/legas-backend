@@ -2,12 +2,12 @@ import {
   Body,
   Controller,
   Post,
+  Query,
   HttpCode,
   BadRequestException,
 } from '@nestjs/common';
 import { ApiOperation, ApiResponse } from '@nestjs/swagger';
 import { PaymentsService } from './payments.service';
-import { WebhookNotificationDto } from './dto/webhook.dto';
 import { CreateCheckoutRequestDto } from './dto/create-checkout-request.dto';
 import { UserInfo } from '@app/auth/decorators/user-info.decorator';
 import type { UserInfoType } from '@app/auth/decorators/user-info.decorator';
@@ -111,7 +111,20 @@ export class PaymentsController {
     status: 200,
     description: 'The webhook notification has been successfully processed',
   })
-  async handleWebhook(@Body() webhookData: WebhookNotificationDto) {
-    return this.paymentsService.handleWebhookNotification(webhookData);
+  async handleWebhook(
+    @Body() body: Record<string, unknown>,
+    @Query() query: Record<string, string>,
+  ) {
+    return this.paymentsService.handleWebhookNotification(body, query);
+  }
+
+  /**
+   * Some legacy IPN deliveries arrive as GET with `?topic=payment&id=...`.
+   * Same handler, no body.
+   */
+  @Get('/mercadopago/webhook')
+  @ApiOperation({ summary: 'Handle Mercado Pago legacy IPN (GET)' })
+  handleWebhookGet(@Query() query: Record<string, string>) {
+    return this.paymentsService.handleWebhookNotification({}, query);
   }
 }

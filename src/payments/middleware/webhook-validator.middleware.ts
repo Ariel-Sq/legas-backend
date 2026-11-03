@@ -16,6 +16,17 @@ export class WebhookValidatorMiddleware implements NestMiddleware {
     const xRequestId = req.headers['x-request-id'] as string;
     const dataId = req.query['data.id'] as string;
 
+    // Legacy IPN notifications ("Pago (legacy)") arrive as
+    // `?topic=payment&id=123` with no signature. They are accepted here and
+    // processed by re-reading the payment from MercadoPago, so a forged id can
+    // never mark an order as paid — the truth comes from the MP API.
+    const topic = (req.query['topic'] ?? req.query['type']) as string;
+    const legacyId = (req.query['id'] ?? req.query['data.id']) as string;
+    const isLegacy = !xSignature && topic === 'payment' && Boolean(legacyId);
+    if (isLegacy) {
+      return next();
+    }
+
     if (!xSignature || !xRequestId || !dataId) {
       throw new UnauthorizedException(
         'Missing required webhook headers or query parameters',
