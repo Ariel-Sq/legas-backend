@@ -5,8 +5,8 @@ import type { Transporter } from 'nodemailer';
 /**
  * Transactional mailer with three modes, in order of preference:
  *
- *  1. Gmail API over HTTPS (GOOGLE_CLIENT_ID + GOOGLE_CLIENT_SECRET +
- *     GOOGLE_REFRESH_TOKEN + SMTP_USER). Used when the Google account can't
+ *  1. Gmail API over HTTPS (GMAIL_CLIENT_ID + GMAIL_CLIENT_SECRET +
+ *     GMAIL_REFRESH_TOKEN + SMTP_USER). Used when the Google account can't
  *     create an app password and/or the network drops SMTP handshakes —
  *     Google's own recommendation is the HTTPS API.
  *  2. Plain SMTP user/password (SMTP_USER + SMTP_PASS): app password or any
