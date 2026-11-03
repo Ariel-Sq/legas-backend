@@ -22,7 +22,7 @@ import {
 import type { AdminActor } from './admin.guard';
 
 const IMAGE_PATH = 'products/legas';
-const MAX_IMAGE_BYTES = 6 * 1024 * 1024;
+const MAX_IMAGE_BYTES = 4 * 1024 * 1024;
 const ALLOWED_IMAGE_TYPES = ['image/webp', 'image/jpeg', 'image/png'];
 
 @Injectable()
@@ -212,7 +212,7 @@ export class AdminService {
       throw new BadRequestException('Formato no permitido (webp, jpg o png)');
     }
     if (file.size > MAX_IMAGE_BYTES) {
-      throw new BadRequestException('La imagen supera los 6 MB');
+      throw new BadRequestException('La imagen supera los 4 MB (límite de subida)');
     }
 
     const variation = await this.variations.findOne({
