@@ -45,6 +45,7 @@ export class AdminController {
   }
 
   @Get('me')
+  @Roles(UserRole.OWNER, UserRole.ADMIN, UserRole.EDITOR)
   @ApiOperation({ summary: 'Who am I inside the panel' })
   me(@Req() req: any) {
     return this.actor(req);
