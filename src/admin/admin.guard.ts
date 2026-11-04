@@ -51,14 +51,14 @@ export class AdminGuard implements CanActivate {
     }
 
     const ownerEmail = (process.env.OWNER_EMAIL || '').toLowerCase();
-    const isOwner = Boolean(ownerEmail) && user.email.toLowerCase() === ownerEmail;
+    const isOwner =
+      Boolean(ownerEmail) && user.email.toLowerCase() === ownerEmail;
     const role = isOwner ? UserRole.OWNER : user.role;
 
-    const required =
-      this.reflector.getAllAndOverride<UserRole[]>(ROLES_KEY, [
-        context.getHandler(),
-        context.getClass(),
-      ]) ?? [UserRole.OWNER, UserRole.ADMIN];
+    const required = this.reflector.getAllAndOverride<UserRole[]>(ROLES_KEY, [
+      context.getHandler(),
+      context.getClass(),
+    ]) ?? [UserRole.OWNER, UserRole.ADMIN];
 
     if (!required.includes(role)) {
       throw new ForbiddenException('No tenés permisos para esta acción');

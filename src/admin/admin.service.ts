@@ -71,7 +71,9 @@ export class AdminService {
     const templates = await query.getMany();
 
     // One query for every main image, keyed by variation.
-    const variationIds = templates.flatMap((t) => t.variations.map((v) => v.id));
+    const variationIds = templates.flatMap((t) =>
+      t.variations.map((v) => v.id),
+    );
     const mainImages = variationIds.length
       ? await this.images.find({
           where: { variation_id: In(variationIds), isMain: true },
@@ -164,13 +166,14 @@ export class AdminService {
       throw new BadRequestException('Elegí al menos una categoría');
     }
 
-    const base = dto.name
-      .normalize('NFD')
-      .replace(/[\u0300-\u036f]/g, '')
-      .toLowerCase()
-      .replace(/[^a-z0-9]+/g, '-')
-      .replace(/^-+|-+$/g, '')
-      .slice(0, 80) || 'producto';
+    const base =
+      dto.name
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, '-')
+        .replace(/^-+|-+$/g, '')
+        .slice(0, 80) || 'producto';
 
     let slug = base;
     let suffix = 2;
@@ -265,7 +268,9 @@ export class AdminService {
     const sku = `${template.slug}-${medida.toLowerCase()}`;
     const exists = await this.variations.findOne({ where: { sku } });
     if (exists) {
-      throw new BadRequestException(`Ya existe una variante con la medida ${medida}`);
+      throw new BadRequestException(
+        `Ya existe una variante con la medida ${medida}`,
+      );
     }
 
     const material =
@@ -278,7 +283,7 @@ export class AdminService {
       price: dto.price,
       stock: 0,
       attributes: { medida: `${medida} cm`, material },
-      sort_order: (template.variations?.length ?? 0),
+      sort_order: template.variations?.length ?? 0,
     });
     const saved = await this.variations.save(variation);
 
@@ -293,7 +298,11 @@ export class AdminService {
     return saved;
   }
 
-  async updateVariation(id: string, dto: UpdateVariationDto, actor: AdminActor) {
+  async updateVariation(
+    id: string,
+    dto: UpdateVariationDto,
+    actor: AdminActor,
+  ) {
     const variation = await this.variations.findOne({ where: { id } });
     if (!variation) throw new NotFoundException('Variante no encontrada');
 
@@ -323,7 +332,9 @@ export class AdminService {
       throw new BadRequestException('Formato no permitido (webp, jpg o png)');
     }
     if (file.size > MAX_IMAGE_BYTES) {
-      throw new BadRequestException('La imagen supera los 4 MB (límite de subida)');
+      throw new BadRequestException(
+        'La imagen supera los 4 MB (límite de subida)',
+      );
     }
 
     const variation = await this.variations.findOne({
@@ -440,7 +451,7 @@ export class AdminService {
       throw new BadRequestException('El rol del dueño no se puede cambiar');
     }
 
-    user.role = dto.role as UserRole;
+    user.role = dto.role;
     const saved = await this.users.save(user);
     await this.audit.log({
       actorId: actor.id,
@@ -545,11 +556,11 @@ export class AdminService {
         email,
         firstName: email.split('@')[0],
         lastName: '',
-        role: dto.role as UserRole,
+        role: dto.role,
         authProvider: AuthProvider.GOOGLE,
       });
     } else {
-      user.role = dto.role as UserRole;
+      user.role = dto.role;
     }
     const saved = await this.users.save(user);
 
@@ -563,7 +574,8 @@ export class AdminService {
     });
 
     const site =
-      process.env.FRONTEND_URL?.replace(/\/$/, '') ?? 'https://legasmuebles.com';
+      process.env.FRONTEND_URL?.replace(/\/$/, '') ??
+      'https://legasmuebles.com';
     const roleLabel =
       dto.role === UserRole.ADMIN
         ? 'administrador'
