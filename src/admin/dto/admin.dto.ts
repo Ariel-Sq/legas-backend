@@ -161,4 +161,8 @@ export class UpdateHeroDto {
   @MinLength(1)
   @MaxLength(300)
   ctaHref?: string;
+
+  @IsOptional()
+  @IsBoolean()
+  showText?: boolean;
 }

@@ -36,6 +36,13 @@ export class HeroBanner {
   @Column({ type: 'varchar', length: 300, default: '/shop' })
   ctaHref: string;
 
+  /**
+   * Whether the headline/subtitle/button are drawn on top of the image. A
+   * banner designed with its own logo and text is shown as-is.
+   */
+  @Column({ type: 'boolean', default: true })
+  showText: boolean;
+
   @UpdateDateColumn({ type: 'timestamptz' })
   updatedAt: Date;
 

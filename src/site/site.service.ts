@@ -13,6 +13,7 @@ export const HERO_DEFAULTS = {
 
 export interface PublicHero {
   imageUrl: string | null;
+  showText: boolean;
   headline: string;
   subheadline: string;
   ctaLabel: string;
@@ -50,7 +51,10 @@ export class SiteService {
 
   async updateHero(
     patch: Partial<
-      Pick<HeroBanner, 'headline' | 'subheadline' | 'ctaLabel' | 'ctaHref'>
+      Pick<
+        HeroBanner,
+        'headline' | 'subheadline' | 'ctaLabel' | 'ctaHref' | 'showText'
+      >
     >,
   ): Promise<HeroBanner> {
     const hero = await this.getHero();
@@ -82,6 +86,7 @@ export class SiteService {
   toPublic(hero: HeroBanner): PublicHero {
     return {
       imageUrl: this.imageUrlFor(hero.imagePath),
+      showText: hero.showText,
       headline: hero.headline,
       subheadline: hero.subheadline,
       ctaLabel: hero.ctaLabel,
