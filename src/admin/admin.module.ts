@@ -8,6 +8,7 @@ import { User } from '@app/users/entities/user.entity';
 import { UsersModule } from '@app/users/users.module';
 import { StorageModule } from '@app/storage/storage.module';
 import { NotificationsModule } from '@app/notifications/notifications.module';
+import { SiteModule } from '@app/site/site.module';
 import { AdminController } from './admin.controller';
 import { AdminGuard } from './admin.guard';
 import { AdminService } from './admin.service';
@@ -25,6 +26,7 @@ import { AdminAuditService } from './admin-audit.service';
     UsersModule,
     StorageModule,
     NotificationsModule,
+    SiteModule,
   ],
   controllers: [AdminController],
   providers: [AdminService, AdminAuditService, AdminGuard],

@@ -15,6 +15,7 @@ import { Category } from '@app/categories/entities/category.entity';
 import { User, UserRole, AuthProvider } from '@app/users/entities/user.entity';
 import { Order, OrderStatus } from '@app/payments/entities/order.entity';
 import { EmailService } from '@app/notifications/email.service';
+import { SiteService } from '@app/site/site.service';
 import type { IStorageService } from '@app/storage/storage.interface';
 import { AdminAuditService } from './admin-audit.service';
 import {
@@ -23,6 +24,7 @@ import {
   InviteUserDto,
   UpdateImageDto,
   UpdateOrderStatusDto,
+  UpdateHeroDto,
   UpdateProductDto,
   UpdateVariationDto,
   UpdateUserRoleDto,
@@ -30,6 +32,7 @@ import {
 import type { AdminActor } from './admin.guard';
 
 const IMAGE_PATH = 'products/legas';
+const HERO_IMAGE_PATH = 'site/hero';
 const MAX_IMAGES_PER_VARIATION = 6;
 const MAX_IMAGE_BYTES = 4 * 1024 * 1024;
 const ALLOWED_IMAGE_TYPES = ['image/webp', 'image/jpeg', 'image/png'];
@@ -54,6 +57,7 @@ export class AdminService {
     private readonly audit: AdminAuditService,
     private readonly dataSource: DataSource,
     private readonly email: EmailService,
+    private readonly site: SiteService,
   ) {}
 
   // ----- Reads -----
@@ -626,5 +630,73 @@ export class AdminService {
       role: saved.role,
       emailSent,
     };
+  }
+
+  // ----- Home hero -----
+
+  async getHero() {
+    const hero = await this.site.getHero();
+    return {
+      ...this.site.toPublic(hero),
+      imagePath: hero.imagePath,
+      updatedAt: hero.updatedAt,
+    };
+  }
+
+  async updateHero(dto: UpdateHeroDto, actor: AdminActor) {
+    await this.site.updateHero(dto);
+    await this.audit.log({
+      actorId: actor.id,
+      actorEmail: actor.email,
+      action: 'update',
+      entity: 'hero',
+      payload: { ...dto },
+    });
+    return this.getHero();
+  }
+
+  async uploadHeroImage(file: Express.Multer.File, actor: AdminActor) {
+    if (!file) {
+      throw new BadRequestException('Falta la imagen');
+    }
+    if (!ALLOWED_IMAGE_TYPES.includes(file.mimetype)) {
+      throw new BadRequestException('Formato no permitido (webp, jpg o png)');
+    }
+    if (file.size > MAX_IMAGE_BYTES) {
+      throw new BadRequestException(
+        'La imagen supera los 4 MB (límite de subida)',
+      );
+    }
+
+    const uploaded = await this.storage.uploadFile(file, HERO_IMAGE_PATH);
+    const { previousPath } = await this.site.setImage(uploaded.path);
+
+    if (previousPath && previousPath !== uploaded.path) {
+      // Best effort: an orphaned file is harmless, a failed upload is not.
+      await this.storage.deleteFile(previousPath).catch(() => undefined);
+    }
+
+    await this.audit.log({
+      actorId: actor.id,
+      actorEmail: actor.email,
+      action: 'update-image',
+      entity: 'hero',
+      payload: { path: uploaded.path },
+    });
+    return this.getHero();
+  }
+
+  async deleteHeroImage(actor: AdminActor) {
+    const { previousPath } = await this.site.clearImage();
+    if (previousPath) {
+      await this.storage.deleteFile(previousPath).catch(() => undefined);
+    }
+    await this.audit.log({
+      actorId: actor.id,
+      actorEmail: actor.email,
+      action: 'delete-image',
+      entity: 'hero',
+    });
+    return this.getHero();
   }
 }

@@ -17,6 +17,7 @@ import { WishlistModule } from '@app/wishlist/wishlist.module';
 import { AuthModule } from '@app/auth/auth.module';
 import { CancellationsModule } from '@app/cancellations/cancellations.module';
 import { MetricsModule } from '@app/metrics/metrics.module';
+import { SiteModule } from '@app/site/site.module';
 import { THROTTLE_LIMIT, THROTTLE_TTL } from '@app/utils/environments';
 @Module({
   imports: [
@@ -70,6 +71,7 @@ import { THROTTLE_LIMIT, THROTTLE_TTL } from '@app/utils/environments';
     AuthModule,
     CancellationsModule,
     MetricsModule,
+    SiteModule,
   ],
   controllers: [],
   providers: [

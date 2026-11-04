@@ -11,6 +11,7 @@ import {
   IsUUID,
   MaxLength,
   Min,
+  MinLength,
 } from 'class-validator';
 import { UserRole } from '@app/users/entities/user.entity';
 
@@ -135,4 +136,29 @@ export class InviteUserDto {
 
   @IsIn([UserRole.ADMIN, UserRole.EDITOR, UserRole.CUSTOMER])
   role: UserRole;
+}
+
+export class UpdateHeroDto {
+  @IsOptional()
+  @IsString()
+  @MinLength(1)
+  @MaxLength(120)
+  headline?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(300)
+  subheadline?: string;
+
+  @IsOptional()
+  @IsString()
+  @MinLength(1)
+  @MaxLength(40)
+  ctaLabel?: string;
+
+  @IsOptional()
+  @IsString()
+  @MinLength(1)
+  @MaxLength(300)
+  ctaHref?: string;
 }

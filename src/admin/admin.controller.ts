@@ -22,6 +22,7 @@ import {
   InviteUserDto,
   UpdateImageDto,
   UpdateOrderStatusDto,
+  UpdateHeroDto,
   UpdateProductDto,
   UpdateUserRoleDto,
   UpdateVariationDto,
@@ -160,6 +161,34 @@ export class AdminController {
   @Roles(UserRole.OWNER)
   inviteUser(@Body() dto: InviteUserDto, @Req() req: any) {
     return this.adminService.inviteUser(dto, this.actor(req));
+  }
+
+  @Get('hero')
+  @Roles(UserRole.OWNER, UserRole.ADMIN, UserRole.EDITOR)
+  getHero() {
+    return this.adminService.getHero();
+  }
+
+  @Patch('hero')
+  @Roles(UserRole.OWNER, UserRole.ADMIN, UserRole.EDITOR)
+  updateHero(@Body() dto: UpdateHeroDto, @Req() req: any) {
+    return this.adminService.updateHero(dto, this.actor(req));
+  }
+
+  @Post('hero/image')
+  @Roles(UserRole.OWNER, UserRole.ADMIN, UserRole.EDITOR)
+  @UseInterceptors(FileInterceptor('file'))
+  uploadHeroImage(
+    @UploadedFile() file: Express.Multer.File,
+    @Req() req: any,
+  ) {
+    return this.adminService.uploadHeroImage(file, this.actor(req));
+  }
+
+  @Delete('hero/image')
+  @Roles(UserRole.OWNER, UserRole.ADMIN, UserRole.EDITOR)
+  deleteHeroImage(@Req() req: any) {
+    return this.adminService.deleteHeroImage(this.actor(req));
   }
 
   @Get('users')
