@@ -134,6 +134,9 @@ describe('ProductVariationsService', () => {
         updated_at: new Date(),
       };
 
+      (productTemplateRepository.findOne as jest.Mock).mockResolvedValue({
+        id: productData.template_id,
+      });
       (productRepository.create as jest.Mock).mockReturnValue(productData);
       (productRepository.save as jest.Mock).mockResolvedValue(
         savedProductVariation,
