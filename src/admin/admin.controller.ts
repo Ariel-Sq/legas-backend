@@ -52,8 +52,16 @@ export class AdminController {
 
   @Get('products')
   @ApiOperation({ summary: 'List products with a summary row per template' })
-  listProducts(@Query('q') q?: string) {
-    return this.adminService.listProducts(q);
+  listProducts(
+    @Query('q') q?: string,
+    @Query('page') page?: string,
+    @Query('pageSize') pageSize?: string,
+  ) {
+    return this.adminService.listProducts(
+      q,
+      Number(page) || 1,
+      Number(pageSize) || 20,
+    );
   }
 
   @Get('categories')

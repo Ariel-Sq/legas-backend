@@ -63,7 +63,14 @@ export class AdminService {
 
   // ----- Reads -----
 
-  async listProducts(q?: string) {
+  /**
+   * Paged catalogue for the panel: 20 rows at a time keeps the table usable
+   * when the shop grows to hundreds of products.
+   */
+  async listProducts(q?: string, page = 1, pageSize = 20) {
+    const safePage = Math.max(1, Math.trunc(page) || 1);
+    const safeSize = Math.min(100, Math.max(1, Math.trunc(pageSize) || 20));
+
     const query = this.templates
       .createQueryBuilder('t')
       .leftJoinAndSelect('t.categories', 'c')
@@ -76,7 +83,13 @@ export class AdminService {
       });
     }
 
-    const templates = await query.getMany();
+    // Count before pagination; the joins are to-one/uuid-keyed so they don't
+    // multiply rows.
+    const total = await query.getCount();
+    const templates = await query
+      .skip((safePage - 1) * safeSize)
+      .take(safeSize)
+      .getMany();
 
     // One query for every main image, keyed by variation.
     const variationIds = templates.flatMap((t) =>
@@ -91,7 +104,7 @@ export class AdminService {
       mainImages.map((img) => [img.variation_id, img.path]),
     );
 
-    return templates.map((t) => ({
+    const items = templates.map((t) => ({
       id: t.id,
       name: t.name,
       slug: t.slug,
@@ -113,6 +126,14 @@ export class AdminService {
           }) || null
         : null,
     }));
+
+    return {
+      items,
+      total,
+      page: safePage,
+      pageSize: safeSize,
+      totalPages: Math.max(1, Math.ceil(total / safeSize)),
+    };
   }
 
   async getProduct(id: string) {
