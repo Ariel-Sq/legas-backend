@@ -315,7 +315,9 @@ export class PaymentsService {
     if (order.customerEmail) {
       const email = orderEmailFor(OrderStatus.PENDING_TRANSFER, order.id);
       if (email) {
-        void this.emailService.send(
+        // Awaited: on serverless the function freezes as soon as it
+        // responds, so a floating promise can lose the email.
+        await this.emailService.send(
           order.customerEmail,
           email.subject,
           email.text,
@@ -631,12 +633,13 @@ export class PaymentsService {
         case 'approved': {
           this.logger.log(`Payment ${paymentId} approved.`);
           await this.clearCartAfterPayment(order.userId, order.sessionId);
-          // Stock was already decremented at checkout — nothing to do.
-          // Fire-and-forget confirmation email; never blocks the webhook.
+          // Products are made to order: nothing to reserve or restore.
+          // The confirmation email is awaited (serverless freezes the
+          // function as soon as it responds).
           if (order.customerEmail && order.status !== OrderStatus.CANCELLED) {
             const email = orderEmailFor(OrderStatus.PAID_PREPARING, order.id);
             if (email) {
-              void this.emailService.send(
+              await this.emailService.send(
                 order.customerEmail,
                 email.subject,
                 email.text,

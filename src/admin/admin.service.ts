@@ -1,5 +1,6 @@
 import {
   BadRequestException,
+  Logger,
   ForbiddenException,
   Inject,
   Injectable,
@@ -35,6 +36,8 @@ const ALLOWED_IMAGE_TYPES = ['image/webp', 'image/jpeg', 'image/png'];
 
 @Injectable()
 export class AdminService {
+  private readonly logger = new Logger(AdminService.name);
+
   constructor(
     @InjectRepository(ProductTemplate)
     private readonly templates: Repository<ProductTemplate>,
@@ -604,7 +607,7 @@ export class AdminService {
         : dto.role === UserRole.EDITOR
           ? 'editor'
           : 'cliente';
-    void this.email.send(
+    const emailSent = await this.email.send(
       saved.email,
       'Te invitaron al panel de Legas Muebles',
       `Hola!\n\nTe habilitamos acceso al panel de Legas Muebles con rol de ${roleLabel}.\n\n` +
@@ -613,6 +616,15 @@ export class AdminService {
         `Si no esperabas este mensaje, ignorá este correo.\n\n— Legas Muebles`,
     );
 
-    return { id: saved.id, email: saved.email, role: saved.role };
+    this.logger.log(
+      `invite: ${saved.email} role=${dto.role} emailSent=${emailSent}`,
+    );
+
+    return {
+      id: saved.id,
+      email: saved.email,
+      role: saved.role,
+      emailSent,
+    };
   }
 }
