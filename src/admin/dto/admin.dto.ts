@@ -118,7 +118,7 @@ export class UpdateImageDto {
 }
 
 export class UpdateUserRoleDto {
-  @IsIn([UserRole.ADMIN, UserRole.EDITOR, UserRole.CUSTOMER])
+  @IsIn([UserRole.ADMIN, UserRole.EDITOR, UserRole.SALES, UserRole.CUSTOMER])
   role: UserRole;
 }
 
@@ -139,7 +139,7 @@ export class InviteUserDto {
   @IsEmail()
   email: string;
 
-  @IsIn([UserRole.ADMIN, UserRole.EDITOR, UserRole.CUSTOMER])
+  @IsIn([UserRole.ADMIN, UserRole.EDITOR, UserRole.SALES, UserRole.CUSTOMER])
   role: UserRole;
 }
 
@@ -191,4 +191,9 @@ export class UpdateHeroDto {
   @Min(0)
   @Max(100)
   imagePosition?: number;
+}
+
+export class UpdateReviewStatusDto {
+  @IsIn(['approved', 'rejected', 'pending', 'hidden'])
+  status: string;
 }

@@ -15,6 +15,8 @@ export enum UserRole {
   ADMIN = 'admin',
   /** Can edit the catalogue (products, prices, images) but not users. */
   EDITOR = 'editor',
+  /** Orders and reviews: changes order status, contacts customers. */
+  SALES = 'sales',
   CUSTOMER = 'customer',
 }
 

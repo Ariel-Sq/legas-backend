@@ -25,6 +25,7 @@ import {
   UpdateOrderStatusDto,
   UpdateHeroDto,
   UpdateProductDto,
+  UpdateReviewStatusDto,
   UpdateUserRoleDto,
   UpdateVariationDto,
 } from './dto/admin.dto';
@@ -46,7 +47,7 @@ export class AdminController {
   }
 
   @Get('me')
-  @Roles(UserRole.OWNER, UserRole.ADMIN, UserRole.EDITOR)
+  @Roles(UserRole.OWNER, UserRole.ADMIN, UserRole.EDITOR, UserRole.SALES)
   @ApiOperation({ summary: 'Who am I inside the panel' })
   me(@Req() req: any) {
     return this.actor(req);
@@ -178,13 +179,13 @@ export class AdminController {
   }
 
   @Get('orders')
-  @Roles(UserRole.OWNER, UserRole.ADMIN, UserRole.EDITOR)
+  @Roles(UserRole.OWNER, UserRole.ADMIN, UserRole.EDITOR, UserRole.SALES)
   listOrders(@Query('status') status?: string) {
     return this.adminService.listOrders(status);
   }
 
   @Patch('orders/:id/status')
-  @Roles(UserRole.OWNER, UserRole.ADMIN)
+  @Roles(UserRole.OWNER, UserRole.ADMIN, UserRole.SALES)
   updateOrderStatus(
     @Param('id') id: string,
     @Body() dto: UpdateOrderStatusDto,
@@ -194,7 +195,7 @@ export class AdminController {
   }
 
   @Patch('orders/:id/deposit')
-  @Roles(UserRole.OWNER, UserRole.ADMIN)
+  @Roles(UserRole.OWNER, UserRole.ADMIN, UserRole.SALES)
   markDepositPaid(@Param('id') id: string, @Req() req: any) {
     return this.adminService.markDepositPaid(id, this.actor(req));
   }
@@ -228,6 +229,28 @@ export class AdminController {
   @Roles(UserRole.OWNER, UserRole.ADMIN, UserRole.EDITOR)
   deleteHeroImage(@Req() req: any) {
     return this.adminService.deleteHeroImage(this.actor(req));
+  }
+
+  @Get('reviews')
+  @Roles(UserRole.OWNER, UserRole.ADMIN, UserRole.SALES)
+  listReviews(@Query('status') status?: string) {
+    return this.adminService.listReviews(status);
+  }
+
+  @Patch('reviews/:id/status')
+  @Roles(UserRole.OWNER, UserRole.ADMIN, UserRole.SALES)
+  setReviewStatus(
+    @Param('id') id: string,
+    @Body() dto: UpdateReviewStatusDto,
+    @Req() req: any,
+  ) {
+    return this.adminService.setReviewStatus(id, dto.status, this.actor(req));
+  }
+
+  @Delete('reviews/:id')
+  @Roles(UserRole.OWNER, UserRole.ADMIN)
+  deleteReview(@Param('id') id: string, @Req() req: any) {
+    return this.adminService.deleteReview(id, this.actor(req));
   }
 
   @Get('users')

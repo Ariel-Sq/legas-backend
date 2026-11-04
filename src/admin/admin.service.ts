@@ -1056,4 +1056,64 @@ export class AdminService {
     });
     return { ok: true, products };
   }
+
+  // ----- Reviews -----
+
+  /** Review queue for moderation, newest first, with the product name. */
+  async listReviews(status?: string) {
+    const rows = await this.dataSource.query(
+      `SELECT r.id, r.rating, r.title, r.content, r."authorName",
+              r.status, r."isVerifiedPurchase", r.created_at AS "createdAt",
+              COALESCE(pv.name, pv.sku, 'Producto eliminado') AS product,
+              u.email AS "userEmail"
+         FROM reviews r
+         LEFT JOIN product_variations pv ON pv.id = r."productVariationId"
+         LEFT JOIN users u ON u.id = r."userId"
+         ${status && status !== 'all' ? 'WHERE r.status = $1' : ''}
+         ORDER BY r.created_at DESC
+         LIMIT 200`,
+      status && status !== 'all' ? [status] : [],
+    );
+    return rows;
+  }
+
+  async setReviewStatus(id: string, status: string, actor: AdminActor) {
+    const allowed = ['approved', 'rejected', 'pending', 'hidden'];
+    if (!allowed.includes(status)) {
+      throw new BadRequestException('Estado de reseña inválido');
+    }
+
+    const result = await this.dataSource.query(
+      `UPDATE reviews SET status = $2, updated_at = now() WHERE id = $1 RETURNING id, status`,
+      [id, status],
+    );
+    if (!result?.length) throw new NotFoundException('Reseña no encontrada');
+
+    await this.audit.log({
+      actorId: actor.id,
+      actorEmail: actor.email,
+      action: 'update-status',
+      entity: 'review',
+      entityId: id,
+      payload: { status },
+    });
+    return result[0];
+  }
+
+  async deleteReview(id: string, actor: AdminActor) {
+    const result = await this.dataSource.query(
+      `DELETE FROM reviews WHERE id = $1 RETURNING id`,
+      [id],
+    );
+    if (!result?.length) throw new NotFoundException('Reseña no encontrada');
+
+    await this.audit.log({
+      actorId: actor.id,
+      actorEmail: actor.email,
+      action: 'delete',
+      entity: 'review',
+      entityId: id,
+    });
+    return { ok: true };
+  }
 }
