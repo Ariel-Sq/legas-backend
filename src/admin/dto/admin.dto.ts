@@ -77,11 +77,6 @@ export class CreateVariationDto {
   @IsNumber({ maxDecimalPlaces: 2 })
   @Min(0)
   price: number;
-
-  @IsOptional()
-  @IsInt()
-  @Min(0)
-  stock?: number;
 }
 
 export class UpdateVariationDto {
@@ -94,11 +89,6 @@ export class UpdateVariationDto {
   @IsNumber({ maxDecimalPlaces: 2 })
   @Min(0)
   price?: number;
-
-  @IsOptional()
-  @IsInt()
-  @Min(0)
-  stock?: number;
 
   @IsOptional()
   @IsBoolean()

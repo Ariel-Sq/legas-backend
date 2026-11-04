@@ -118,7 +118,7 @@ export class AdminService {
 
     return {
       ...template,
-      variations: variations.map((v) => ({
+      variations: variations.map(({ stock: _stock, ...v }) => ({
         ...v,
         images: images.filter((img) => img.variation_id === v.id),
       })),
@@ -276,7 +276,7 @@ export class AdminService {
       sku,
       name: `${template.name} · ${medida} cm`,
       price: dto.price,
-      stock: dto.stock ?? 10,
+      stock: 0,
       attributes: { medida: `${medida} cm`, material },
       sort_order: (template.variations?.length ?? 0),
     });
@@ -299,7 +299,6 @@ export class AdminService {
 
     if (dto.name !== undefined) variation.name = dto.name.trim();
     if (dto.price !== undefined) variation.price = dto.price;
-    if (dto.stock !== undefined) variation.stock = dto.stock;
     if (dto.is_active !== undefined) variation.is_active = dto.is_active;
 
     const saved = await this.variations.save(variation);
