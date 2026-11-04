@@ -358,6 +358,27 @@ export class AdminService {
     });
     const saved = await this.variations.save(variation);
 
+    // Photos belong to the product: a new variant inherits the ones already
+    // uploaded instead of starting empty.
+    const templateImages = template.variations?.length
+      ? await this.images.find({
+          where: { variation_id: template.variations[0].id },
+          order: { sortOrder: 'ASC' },
+        })
+      : [];
+    for (const source of templateImages) {
+      await this.images.save(
+        this.images.create({
+          url: source.url,
+          path: source.path,
+          isMain: source.isMain,
+          sortOrder: source.sortOrder,
+          altText: source.altText,
+          variation_id: saved.id,
+        }),
+      );
+    }
+
     await this.audit.log({
       actorId: actor.id,
       actorEmail: actor.email,
@@ -391,6 +412,78 @@ export class AdminService {
       payload: dto,
     });
     return saved;
+  }
+
+  /**
+   * Upload a photo once and attach it to every variant of the product. Photos
+   * are shared ("as fotos son del producto"), not per measurement.
+   */
+  async addProductImage(
+    productId: string,
+    file: Express.Multer.File | undefined,
+    actor: AdminActor,
+  ) {
+    if (!file) throw new BadRequestException('Falta el archivo');
+    if (!ALLOWED_IMAGE_TYPES.includes(file.mimetype)) {
+      throw new BadRequestException('Formato no permitido (webp, jpg o png)');
+    }
+    if (file.size > MAX_IMAGE_BYTES) {
+      throw new BadRequestException(
+        'La imagen supera los 4 MB (límite de subida)',
+      );
+    }
+
+    const template = await this.templates.findOne({
+      where: { id: productId },
+      relations: ['variations'],
+    });
+    if (!template) throw new NotFoundException('Producto no encontrado');
+
+    const variations = template.variations ?? [];
+    if (variations.length === 0) {
+      throw new BadRequestException(
+        'Agregá al menos una variante y volvé a subir la foto',
+      );
+    }
+
+    const current = await this.images.count({
+      where: { variation_id: variations[0].id },
+    });
+    if (current >= MAX_IMAGES_PER_VARIATION) {
+      throw new BadRequestException(
+        `Máximo ${MAX_IMAGES_PER_VARIATION} fotos por producto`,
+      );
+    }
+
+    const uploaded = await this.storage.uploadFile(file, IMAGE_PATH);
+
+    let first: ProductImage | null = null;
+    for (const variation of variations) {
+      const own = await this.images.count({
+        where: { variation_id: variation.id },
+      });
+      const saved = await this.images.save(
+        this.images.create({
+          url: `/api/images?path=${uploaded.path}`,
+          path: uploaded.path,
+          isMain: own === 0,
+          sortOrder: own,
+          altText: template.name,
+          variation_id: variation.id,
+        }),
+      );
+      if (!first) first = saved;
+    }
+
+    await this.audit.log({
+      actorId: actor.id,
+      actorEmail: actor.email,
+      action: 'upload-image',
+      entity: 'product',
+      entityId: productId,
+      payload: { path: uploaded.path, variations: variations.length },
+    });
+    return first;
   }
 
   async addImage(
@@ -450,11 +543,29 @@ export class AdminService {
     if (!image) throw new NotFoundException('Imagen no encontrada');
 
     if (dto.isMain === true) {
-      // Only one main image per variation.
-      await this.images.update(
-        { variation_id: image.variation_id },
-        { isMain: false },
-      );
+      // One main photo per product: the same path is the main image of every
+      // variant it belongs to.
+      const templateId = await this.templateIdForVariation(image.variation_id);
+      if (templateId) {
+        const variationIds = await this.variationIdsForTemplate(templateId);
+        await this.images
+          .createQueryBuilder()
+          .update(ProductImage)
+          .set({ isMain: false })
+          .where('variation_id IN (:...ids)', { ids: variationIds })
+          .execute();
+        await this.images.update(
+          { path: image.path, variation_id: In(variationIds) },
+          { isMain: true },
+        );
+      } else {
+        await this.images.update(
+          { variation_id: image.variation_id },
+          { isMain: false },
+        );
+        image.isMain = true;
+        await this.images.save(image);
+      }
       image.isMain = true;
     } else if (dto.isMain === false) {
       image.isMain = false;
@@ -478,25 +589,52 @@ export class AdminService {
     const image = await this.images.findOne({ where: { id } });
     if (!image) throw new NotFoundException('Imagen no encontrada');
 
-    const siblings = await this.images.count({
-      where: { variation_id: image.variation_id },
+    const templateId = await this.templateIdForVariation(image.variation_id);
+    const variationIds = templateId
+      ? await this.variationIdsForTemplate(templateId)
+      : [image.variation_id];
+
+    // Photos are shared: the row exists once per variant with the same path.
+    const rows = await this.images.find({
+      where: { path: image.path, variation_id: In(variationIds) },
     });
-    if (siblings <= 1) {
+
+    const uniqueLeft = await this.images
+      .createQueryBuilder('i')
+      .select('COUNT(DISTINCT i.path)', 'count')
+      .where('i.variation_id IN (:...ids)', { ids: variationIds })
+      .andWhere('i.path <> :path', { path: image.path })
+      .getRawOne<{ count: string }>();
+
+    if (!uniqueLeft || Number(uniqueLeft.count) === 0) {
       throw new BadRequestException(
         'Cada producto necesita al menos una foto. Subí otra antes de borrar esta.',
       );
     }
 
-    await this.images.remove(image);
-    if (image.isMain) {
-      const next = await this.images.findOne({
-        where: { variation_id: image.variation_id },
-        order: { sortOrder: 'ASC' },
+    await this.images.remove(rows);
+
+    // Every variant that lost its main photo promotes its first remaining one.
+    for (const variationId of variationIds) {
+      const hasMain = await this.images.findOne({
+        where: { variation_id: variationId, isMain: true },
       });
-      if (next) {
-        next.isMain = true;
-        await this.images.save(next);
+      if (!hasMain) {
+        const next = await this.images.findOne({
+          where: { variation_id: variationId },
+          order: { sortOrder: 'ASC' },
+        });
+        if (next) {
+          next.isMain = true;
+          await this.images.save(next);
+        }
       }
+    }
+
+    // The file is only removed once nothing else points at it.
+    const stillUsed = await this.images.count({ where: { path: image.path } });
+    if (stillUsed === 0) {
+      await this.storage.deleteFile(image.path).catch(() => undefined);
     }
 
     await this.audit.log({
@@ -791,5 +929,107 @@ export class AdminService {
     });
 
     return { id: saved.id, name: saved.name, slug: saved.slug };
+  }
+
+  // ----- Helpers -----
+
+  private async templateIdForVariation(
+    variationId: string,
+  ): Promise<string | null> {
+    const variation = await this.variations.findOne({
+      where: { id: variationId },
+    });
+    return variation?.template_id ?? null;
+  }
+
+  private async variationIdsForTemplate(templateId: string): Promise<string[]> {
+    const rows = await this.variations.find({
+      where: { template_id: templateId },
+    });
+    return rows.map((v) => v.id);
+  }
+
+  /**
+   * Remove a variant. Refused when past orders point at it (history must stay
+   * readable); deactivating it is the alternative.
+   */
+  async deleteVariation(id: string, actor: AdminActor) {
+    const variation = await this.variations.findOne({ where: { id } });
+    if (!variation) throw new NotFoundException('Variante no encontrada');
+
+    const template = await this.templates.findOne({
+      where: { id: variation.template_id },
+      relations: ['variations'],
+    });
+    if (!template) throw new NotFoundException('Producto no encontrado');
+    if ((template.variations?.length ?? 0) <= 1) {
+      throw new BadRequestException(
+        'El producto necesita al menos una variante',
+      );
+    }
+
+    const used = await this.dataSource.query(
+      'SELECT 1 FROM order_items WHERE "productVariationId" = $1 LIMIT 1',
+      [id],
+    );
+    if (Array.isArray(used) && used.length > 0) {
+      throw new BadRequestException(
+        'Esta variante tiene pedidos: desactivala en vez de borrarla',
+      );
+    }
+
+    // Keep the product's photos: hand them to the remaining variants before
+    // dropping this one (a photo may exist only here).
+    const own = await this.images.find({ where: { variation_id: id } });
+    const others = (template.variations ?? []).filter((v) => v.id !== id);
+    for (const image of own) {
+      for (const other of others) {
+        const already = await this.images.findOne({
+          where: { variation_id: other.id, path: image.path },
+        });
+        if (!already) {
+          await this.images.save(
+            this.images.create({
+              url: image.url,
+              path: image.path,
+              isMain: false,
+              sortOrder: image.sortOrder,
+              altText: image.altText,
+              variation_id: other.id,
+            }),
+          );
+        }
+      }
+    }
+
+    await this.images.delete({ variation_id: id });
+    await this.variations.remove(variation);
+
+    // Any variant that ended up without a main photo gets one.
+    for (const other of others) {
+      const hasMain = await this.images.findOne({
+        where: { variation_id: other.id, isMain: true },
+      });
+      if (!hasMain) {
+        const first = await this.images.findOne({
+          where: { variation_id: other.id },
+          order: { sortOrder: 'ASC' },
+        });
+        if (first) {
+          first.isMain = true;
+          await this.images.save(first);
+        }
+      }
+    }
+
+    await this.audit.log({
+      actorId: actor.id,
+      actorEmail: actor.email,
+      action: 'delete',
+      entity: 'variation',
+      entityId: id,
+      payload: { name: variation.name },
+    });
+    return { ok: true };
   }
 }

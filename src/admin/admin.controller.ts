@@ -121,6 +121,23 @@ export class AdminController {
     return this.adminService.updateVariation(id, dto, this.actor(req));
   }
 
+  @Post('products/:id/images')
+  @Roles(UserRole.OWNER, UserRole.ADMIN, UserRole.EDITOR)
+  @UseInterceptors(FileInterceptor('file'))
+  addProductImage(
+    @Param('id') id: string,
+    @UploadedFile() file: Express.Multer.File,
+    @Req() req: any,
+  ) {
+    return this.adminService.addProductImage(id, file, this.actor(req));
+  }
+
+  @Delete('variations/:id')
+  @Roles(UserRole.OWNER, UserRole.ADMIN)
+  deleteVariation(@Param('id') id: string, @Req() req: any) {
+    return this.adminService.deleteVariation(id, this.actor(req));
+  }
+
   @Post('variations/:id/images')
   @Roles(UserRole.OWNER, UserRole.ADMIN, UserRole.EDITOR)
   @UseInterceptors(FileInterceptor('file'))
