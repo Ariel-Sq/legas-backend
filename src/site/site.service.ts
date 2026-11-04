@@ -14,6 +14,8 @@ export const HERO_DEFAULTS = {
 export interface PublicHero {
   imageUrl: string | null;
   showText: boolean;
+  overlayOpacity: number;
+  imagePosition: number;
   headline: string;
   subheadline: string;
   ctaLabel: string;
@@ -53,7 +55,13 @@ export class SiteService {
     patch: Partial<
       Pick<
         HeroBanner,
-        'headline' | 'subheadline' | 'ctaLabel' | 'ctaHref' | 'showText'
+        | 'headline'
+        | 'subheadline'
+        | 'ctaLabel'
+        | 'ctaHref'
+        | 'showText'
+        | 'overlayOpacity'
+        | 'imagePosition'
       >
     >,
   ): Promise<HeroBanner> {
@@ -87,6 +95,8 @@ export class SiteService {
     return {
       imageUrl: this.imageUrlFor(hero.imagePath),
       showText: hero.showText,
+      overlayOpacity: hero.overlayOpacity,
+      imagePosition: hero.imagePosition,
       headline: hero.headline,
       subheadline: hero.subheadline,
       ctaLabel: hero.ctaLabel,

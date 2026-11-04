@@ -8,6 +8,7 @@ import {
   IsObject,
   IsOptional,
   IsString,
+  Max,
   IsUUID,
   MaxLength,
   Min,
@@ -165,4 +166,18 @@ export class UpdateHeroDto {
   @IsOptional()
   @IsBoolean()
   showText?: boolean;
+
+  /** 0 = photo untouched, 60 = heavy veil. */
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  @Max(60)
+  overlayOpacity?: number;
+
+  /** 0 = show the top of the photo, 100 = show the bottom. */
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  @Max(100)
+  imagePosition?: number;
 }

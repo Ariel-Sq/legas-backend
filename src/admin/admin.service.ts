@@ -639,7 +639,6 @@ export class AdminService {
     return {
       ...this.site.toPublic(hero),
       imagePath: hero.imagePath,
-      showText: hero.showText,
       updatedAt: hero.updatedAt,
     };
   }

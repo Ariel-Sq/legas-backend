@@ -43,6 +43,20 @@ export class HeroBanner {
   @Column({ type: 'boolean', default: true })
   showText: boolean;
 
+  /**
+   * Darkness of the veil over the photo, in percent (0 = clean photo, the text
+   * relies on its shadow). Only used when `showText` is on.
+   */
+  @Column({ type: 'int', default: 15 })
+  overlayOpacity: number;
+
+  /**
+   * Vertical focal point of the photo, in percent (0 = top, 50 = center,
+   * 100 = bottom). Lets tall banners be cropped where the subject is.
+   */
+  @Column({ type: 'int', default: 50 })
+  imagePosition: number;
+
   @UpdateDateColumn({ type: 'timestamptz' })
   updatedAt: Date;
 
