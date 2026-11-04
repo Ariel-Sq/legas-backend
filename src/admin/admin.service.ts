@@ -120,8 +120,11 @@ export class AdminService {
 
     return {
       ...template,
-      variations: variations.map(({ stock: _stock, ...v }) => ({
+      // Stock is not part of the panel anymore (everything is made to order);
+      // `undefined` keys are dropped from the JSON payload.
+      variations: variations.map((v) => ({
         ...v,
+        stock: undefined,
         images: images.filter((img) => img.variation_id === v.id),
       })),
     };
