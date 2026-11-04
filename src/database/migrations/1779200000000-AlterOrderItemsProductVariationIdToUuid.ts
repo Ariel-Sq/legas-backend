@@ -7,9 +7,7 @@ import { MigrationInterface, QueryRunner } from 'typeorm';
  * /api/orders endpoint as soon as it eager-loaded the variation. All
  * existing values are uuid-format strings, so the USING cast is safe.
  */
-export class AlterOrderItemsProductVariationIdToUuid1779200000000
-  implements MigrationInterface
-{
+export class AlterOrderItemsProductVariationIdToUuid1779200000000 implements MigrationInterface {
   name = 'AlterOrderItemsProductVariationIdToUuid1779200000000';
 
   public async up(queryRunner: QueryRunner): Promise<void> {

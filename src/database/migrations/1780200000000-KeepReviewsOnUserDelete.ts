@@ -14,9 +14,7 @@ import { MigrationInterface, QueryRunner } from 'typeorm';
  * in Postgres), so the same person can review again after recreating their
  * account.
  */
-export class KeepReviewsOnUserDelete1780200000000
-  implements MigrationInterface
-{
+export class KeepReviewsOnUserDelete1780200000000 implements MigrationInterface {
   public async up(queryRunner: QueryRunner): Promise<void> {
     await queryRunner.query(
       `ALTER TABLE "reviews" ALTER COLUMN "userId" DROP NOT NULL`,

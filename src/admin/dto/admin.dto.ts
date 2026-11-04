@@ -5,6 +5,7 @@ import {
   IsIn,
   IsInt,
   IsNumber,
+  IsDateString,
   IsObject,
   IsOptional,
   IsString,
@@ -196,4 +197,65 @@ export class UpdateHeroDto {
 export class UpdateReviewStatusDto {
   @IsIn(['approved', 'rejected', 'pending', 'hidden'])
   status: string;
+}
+
+export class PromotionBodyDto {
+  @IsString()
+  @MaxLength(120)
+  name: string;
+
+  @IsInt()
+  @Min(1)
+  @Max(90)
+  percent: number;
+
+  @IsOptional()
+  @IsIn(['all', 'category', 'product'])
+  scope?: 'all' | 'category' | 'product';
+
+  @IsOptional()
+  @IsUUID()
+  categoryId?: string | null;
+
+  @IsOptional()
+  @IsUUID()
+  templateId?: string | null;
+
+  @IsOptional()
+  @IsDateString()
+  startsAt?: string | null;
+
+  @IsOptional()
+  @IsDateString()
+  endsAt?: string | null;
+
+  @IsOptional()
+  @IsBoolean()
+  isActive?: boolean;
+}
+
+export class SlideBodyDto {
+  @IsOptional()
+  @IsString()
+  @MaxLength(120)
+  headline?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(300)
+  subheadline?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(40)
+  ctaLabel?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(300)
+  ctaHref?: string;
+
+  @IsOptional()
+  @IsBoolean()
+  isActive?: boolean;
 }

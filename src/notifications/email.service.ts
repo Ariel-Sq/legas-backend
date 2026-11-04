@@ -31,9 +31,9 @@ export class EmailService {
   private get usingGmailApi(): boolean {
     return Boolean(
       this.gmailUser &&
-        this.googleClientId &&
-        this.googleClientSecret &&
-        this.googleRefreshToken,
+      this.googleClientId &&
+      this.googleClientSecret &&
+      this.googleRefreshToken,
     );
   }
 
@@ -157,8 +157,7 @@ export class EmailService {
 
   /** Minimal UTF-8 plain-text MIME message (base64 body, RFC 2047 subject). */
   private buildMime(to: string, subject: string, text: string): string {
-    const from =
-      process.env.SMTP_FROM || `"Legas Muebles" <${this.gmailUser}>`;
+    const from = process.env.SMTP_FROM || `"Legas Muebles" <${this.gmailUser}>`;
     const encodedSubject = `=?UTF-8?B?${Buffer.from(subject, 'utf8').toString('base64')}?=`;
     const body = Buffer.from(text, 'utf8')
       .toString('base64')

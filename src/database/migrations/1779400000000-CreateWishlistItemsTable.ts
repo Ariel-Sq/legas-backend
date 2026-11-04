@@ -13,9 +13,7 @@ import { MigrationInterface, QueryRunner } from 'typeorm';
  * variation twice. The service layer treats add() as an idempotent upsert
  * but the constraint is the authoritative guarantee.
  */
-export class CreateWishlistItemsTable1779400000000
-  implements MigrationInterface
-{
+export class CreateWishlistItemsTable1779400000000 implements MigrationInterface {
   name = 'CreateWishlistItemsTable1779400000000';
 
   public async up(queryRunner: QueryRunner): Promise<void> {

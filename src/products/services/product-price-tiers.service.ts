@@ -7,6 +7,7 @@ import {
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { ProductPriceTier } from '../entities/product-price-tier.entity';
+import { PromotionsService } from '@app/site/promotions.service';
 import { ProductVariation } from '../entities/product-variation.entity';
 import { CreateProductPriceTierDto } from '../dto/create-product-price-tier.dto';
 import { UpdateProductPriceTierDto } from '../dto/update-product-price-tier.dto';
@@ -16,6 +17,7 @@ export class ProductPriceTiersService {
   private readonly logger = new Logger(ProductPriceTiersService.name);
 
   constructor(
+    private readonly promotions: PromotionsService,
     @InjectRepository(ProductPriceTier)
     private productPriceTiersRepository: Repository<ProductPriceTier>,
     @InjectRepository(ProductVariation)
@@ -172,8 +174,11 @@ export class ProductPriceTiersService {
       quantity,
     );
 
+    const percent = await this.promotions.percentForVariation(variationId);
+
     if (priceTier) {
-      return priceTier.price;
+      // Discounts stack on top of the quantity tier.
+      return this.promotions.apply(Number(priceTier.price), percent);
     }
 
     // Si no hay tier específico, usar precio base de la variación
@@ -187,6 +192,6 @@ export class ProductPriceTiersService {
       );
     }
 
-    return variation.price;
+    return this.promotions.apply(Number(variation.price), percent);
   }
 }

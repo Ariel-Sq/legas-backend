@@ -1,8 +1,6 @@
 import { MigrationInterface, QueryRunner } from 'typeorm';
 
-export class RenameCategoryParentIdColumn1699123456792
-  implements MigrationInterface
-{
+export class RenameCategoryParentIdColumn1699123456792 implements MigrationInterface {
   name = 'RenameCategoryParentIdColumn1699123456792';
 
   public async up(queryRunner: QueryRunner): Promise<void> {

@@ -24,6 +24,8 @@ import {
   UpdateImageDto,
   UpdateOrderStatusDto,
   UpdateHeroDto,
+  PromotionBodyDto,
+  SlideBodyDto,
   UpdateProductDto,
   UpdateReviewStatusDto,
   UpdateUserRoleDto,
@@ -229,6 +231,101 @@ export class AdminController {
   @Roles(UserRole.OWNER, UserRole.ADMIN, UserRole.EDITOR)
   deleteHeroImage(@Req() req: any) {
     return this.adminService.deleteHeroImage(this.actor(req));
+  }
+
+  // ----- Promotions -----
+
+  @Get('promotions')
+  @Roles(UserRole.OWNER, UserRole.ADMIN, UserRole.EDITOR)
+  listPromotions() {
+    return this.adminService.listPromotions();
+  }
+
+  @Post('promotions')
+  @Roles(UserRole.OWNER, UserRole.ADMIN, UserRole.EDITOR)
+  createPromotion(@Body() dto: PromotionBodyDto, @Req() req: any) {
+    return this.adminService.createPromotion(dto, this.actor(req));
+  }
+
+  @Patch('promotions/:id')
+  @Roles(UserRole.OWNER, UserRole.ADMIN, UserRole.EDITOR)
+  updatePromotion(
+    @Param('id') id: string,
+    @Body() dto: PromotionBodyDto,
+    @Req() req: any,
+  ) {
+    return this.adminService.updatePromotion(id, dto, this.actor(req));
+  }
+
+  @Delete('promotions/:id')
+  @Roles(UserRole.OWNER, UserRole.ADMIN, UserRole.EDITOR)
+  deletePromotion(@Param('id') id: string, @Req() req: any) {
+    return this.adminService.deletePromotion(id, this.actor(req));
+  }
+
+  // ----- Hero slides -----
+
+  @Get('slides')
+  @Roles(UserRole.OWNER, UserRole.ADMIN, UserRole.EDITOR)
+  listSlides() {
+    return this.adminService.listSlides();
+  }
+
+  @Post('slides')
+  @Roles(UserRole.OWNER, UserRole.ADMIN, UserRole.EDITOR)
+  createSlide(@Body() dto: SlideBodyDto, @Req() req: any) {
+    return this.adminService.createSlide(dto, this.actor(req));
+  }
+
+  @Post('slides/:id/image')
+  @Roles(UserRole.OWNER, UserRole.ADMIN, UserRole.EDITOR)
+  @UseInterceptors(FileInterceptor('file'))
+  uploadSlideImage(
+    @Param('id') id: string,
+    @UploadedFile() file: Express.Multer.File,
+    @Req() req: any,
+  ) {
+    return this.adminService.uploadSlideImage(id, file, this.actor(req));
+  }
+
+  @Patch('slides/:id')
+  @Roles(UserRole.OWNER, UserRole.ADMIN, UserRole.EDITOR)
+  updateSlide(
+    @Param('id') id: string,
+    @Body() dto: SlideBodyDto,
+    @Req() req: any,
+  ) {
+    return this.adminService.updateSlide(id, dto, this.actor(req));
+  }
+
+  @Delete('slides/:id')
+  @Roles(UserRole.OWNER, UserRole.ADMIN, UserRole.EDITOR)
+  deleteSlide(@Param('id') id: string, @Req() req: any) {
+    return this.adminService.deleteSlide(id, this.actor(req));
+  }
+
+  // ----- Shop settings + stats -----
+
+  @Get('settings')
+  @Roles(UserRole.OWNER, UserRole.ADMIN, UserRole.EDITOR)
+  getSettings() {
+    return this.adminService.getShopSettings();
+  }
+
+  @Patch('settings/:key')
+  @Roles(UserRole.OWNER, UserRole.ADMIN, UserRole.EDITOR)
+  updateSettings(
+    @Param('key') key: 'marquee' | 'payments' | 'shipping',
+    @Body() value: Record<string, unknown>,
+    @Req() req: any,
+  ) {
+    return this.adminService.updateShopSettings(key, value, this.actor(req));
+  }
+
+  @Get('stats')
+  @Roles(UserRole.OWNER, UserRole.ADMIN, UserRole.SALES)
+  stats(@Query('days') days?: string) {
+    return this.adminService.getStats(Number(days) || 30);
   }
 
   @Get('reviews')

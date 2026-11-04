@@ -121,9 +121,7 @@ export function orderWhatsAppFor(
 
 /** Events that get an internal notification to the shop. */
 export type ShopOrderEvent =
-  | 'new_order'
-  | 'payment_approved'
-  | 'payment_rejected';
+  'new_order' | 'payment_approved' | 'payment_rejected';
 
 /** Address of the shop (overridable so a staging deploy doesn't spam it). */
 export function shopNotificationEmail(): string {
@@ -167,7 +165,8 @@ export function shopOrderEmailFor(
     order.depositAmount && Number(order.depositAmount) > 0
       ? `\nSeña (50%): ${money(order.depositAmount)}` +
         `\nSaldo al retirar: ${money(
-          order.balanceAmount ?? Number(order.totalAmount) - Number(order.depositAmount),
+          order.balanceAmount ??
+            Number(order.totalAmount) - Number(order.depositAmount),
         )}`
       : '';
 

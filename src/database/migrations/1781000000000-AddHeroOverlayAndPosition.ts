@@ -4,9 +4,7 @@ import { MigrationInterface, QueryRunner } from 'typeorm';
  * Banner tuning: how dark the veil over the photo is (percent) and which part
  * of the photo stays visible when it is cropped (vertical focal point).
  */
-export class AddHeroOverlayAndPosition1781000000000
-  implements MigrationInterface
-{
+export class AddHeroOverlayAndPosition1781000000000 implements MigrationInterface {
   public async up(queryRunner: QueryRunner): Promise<void> {
     await queryRunner.query(`
       ALTER TABLE "hero_banner"

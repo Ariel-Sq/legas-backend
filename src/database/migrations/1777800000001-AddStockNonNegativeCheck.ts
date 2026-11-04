@@ -4,9 +4,7 @@ import { MigrationInterface, QueryRunner } from 'typeorm';
  * Defense-in-depth: even if a code path bypasses the application-level
  * `stock + delta >= 0` guard in updateStock, the DB rejects negative stock.
  */
-export class AddStockNonNegativeCheck1777800000001
-  implements MigrationInterface
-{
+export class AddStockNonNegativeCheck1777800000001 implements MigrationInterface {
   name = 'AddStockNonNegativeCheck1777800000001';
 
   public async up(queryRunner: QueryRunner): Promise<void> {

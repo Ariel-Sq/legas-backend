@@ -16,6 +16,7 @@ import { User, UserRole, AuthProvider } from '@app/users/entities/user.entity';
 import { Order, OrderStatus } from '@app/payments/entities/order.entity';
 import { EmailService } from '@app/notifications/email.service';
 import { SiteService } from '@app/site/site.service';
+import { Promotion } from '@app/site/entities/promotion.entity';
 import { publicImageUrl } from '@app/utils/image-url';
 import type { IStorageService } from '@app/storage/storage.interface';
 import { AdminAuditService } from './admin-audit.service';
@@ -61,6 +62,8 @@ export class AdminService {
     private readonly categories: Repository<Category>,
     @InjectRepository(User)
     private readonly users: Repository<User>,
+    @InjectRepository(Promotion)
+    private readonly promotions: Repository<Promotion>,
     @Inject('StorageService')
     private readonly storage: IStorageService,
     private readonly audit: AdminAuditService,
@@ -344,8 +347,7 @@ export class AdminService {
     }
 
     const material = template.variations?.[0]?.attributes?.material as
-      | string
-      | undefined;
+      string | undefined;
 
     const variation = this.variations.create({
       template_id: template.id,
@@ -827,7 +829,7 @@ export class AdminService {
   async getHero() {
     const hero = await this.site.getHero();
     return {
-      ...this.site.toPublic(hero),
+      ...(await this.site.toPublic(hero)),
       imagePath: hero.imagePath,
       updatedAt: hero.updatedAt,
     };
@@ -1120,5 +1122,287 @@ export class AdminService {
       entityId: id,
     });
     return { ok: true };
+  }
+
+  // ----- Promotions -----
+
+  listPromotions() {
+    return this.promotions.find({ order: { createdAt: 'DESC' } });
+  }
+
+  async createPromotion(dto: PromotionDto, actor: AdminActor) {
+    assertPromotion(dto);
+    const saved = await this.promotions.save(
+      this.promotions.create({
+        name: dto.name.trim(),
+        percent: dto.percent,
+        scope: dto.scope ?? 'all',
+        categoryId: dto.categoryId ?? null,
+        templateId: dto.templateId ?? null,
+        startsAt: dto.startsAt ? new Date(dto.startsAt) : null,
+        endsAt: dto.endsAt ? new Date(dto.endsAt) : null,
+        isActive: dto.isActive ?? true,
+      }),
+    );
+    await this.audit.log({
+      actorId: actor.id,
+      actorEmail: actor.email,
+      action: 'create',
+      entity: 'promotion',
+      entityId: saved.id,
+      payload: { name: saved.name, percent: saved.percent, scope: saved.scope },
+    });
+    return saved;
+  }
+
+  async updatePromotion(id: string, dto: PromotionDto, actor: AdminActor) {
+    const promo = await this.promotions.findOne({ where: { id } });
+    if (!promo) throw new NotFoundException('Promoción no encontrada');
+    if (dto.percent !== undefined) assertPromotion(dto);
+
+    Object.assign(promo, {
+      ...(dto.name !== undefined ? { name: dto.name.trim() } : {}),
+      ...(dto.percent !== undefined ? { percent: dto.percent } : {}),
+      ...(dto.scope !== undefined ? { scope: dto.scope } : {}),
+      ...(dto.categoryId !== undefined
+        ? { categoryId: dto.categoryId || null }
+        : {}),
+      ...(dto.templateId !== undefined
+        ? { templateId: dto.templateId || null }
+        : {}),
+      ...(dto.startsAt !== undefined
+        ? { startsAt: dto.startsAt ? new Date(dto.startsAt) : null }
+        : {}),
+      ...(dto.endsAt !== undefined
+        ? { endsAt: dto.endsAt ? new Date(dto.endsAt) : null }
+        : {}),
+      ...(dto.isActive !== undefined ? { isActive: dto.isActive } : {}),
+    });
+
+    const saved = await this.promotions.save(promo);
+    await this.audit.log({
+      actorId: actor.id,
+      actorEmail: actor.email,
+      action: 'update',
+      entity: 'promotion',
+      entityId: id,
+      payload: { ...dto },
+    });
+    return saved;
+  }
+
+  async deletePromotion(id: string, actor: AdminActor) {
+    const promo = await this.promotions.findOne({ where: { id } });
+    if (!promo) throw new NotFoundException('Promoción no encontrada');
+    await this.promotions.remove(promo);
+    await this.audit.log({
+      actorId: actor.id,
+      actorEmail: actor.email,
+      action: 'delete',
+      entity: 'promotion',
+      entityId: id,
+      payload: { name: promo.name },
+    });
+    return { ok: true };
+  }
+
+  // ----- Hero slides -----
+
+  async listSlides() {
+    const rows = await this.site.listSlides();
+    return rows.map((slide) => ({
+      ...slide,
+      imageUrl: this.site.imageUrlFor(slide.imagePath),
+    }));
+  }
+
+  async createSlide(dto: SlideDto, actor: AdminActor) {
+    const saved = await this.site.createSlide({
+      headline: dto.headline ?? '',
+      subheadline: dto.subheadline ?? '',
+      ctaLabel: dto.ctaLabel ?? '',
+      ctaHref: dto.ctaHref ?? '',
+      isActive: dto.isActive ?? true,
+    });
+    await this.audit.log({
+      actorId: actor.id,
+      actorEmail: actor.email,
+      action: 'create',
+      entity: 'hero-slide',
+      entityId: saved.id,
+    });
+    return saved;
+  }
+
+  async uploadSlideImage(
+    id: string,
+    file: Express.Multer.File | undefined,
+    actor: AdminActor,
+  ) {
+    if (!file) throw new BadRequestException('Falta la imagen');
+    if (!ALLOWED_IMAGE_TYPES.includes(file.mimetype)) {
+      throw new BadRequestException('Formato no permitido (webp, jpg o png)');
+    }
+    if (file.size > MAX_IMAGE_BYTES) {
+      throw new BadRequestException('La imagen supera los 4 MB');
+    }
+
+    const uploaded = await this.storage.uploadFile(file, HERO_IMAGE_PATH);
+    const previous = await this.site.updateSlide(id, {
+      imagePath: uploaded.path,
+    });
+    await this.audit.log({
+      actorId: actor.id,
+      actorEmail: actor.email,
+      action: 'update-image',
+      entity: 'hero-slide',
+      entityId: id,
+      payload: { path: uploaded.path },
+    });
+    return { ...previous, imageUrl: this.site.imageUrlFor(uploaded.path) };
+  }
+
+  async updateSlide(id: string, dto: SlideDto, actor: AdminActor) {
+    const saved = await this.site.updateSlide(id, dto);
+    await this.audit.log({
+      actorId: actor.id,
+      actorEmail: actor.email,
+      action: 'update',
+      entity: 'hero-slide',
+      entityId: id,
+      payload: { ...dto },
+    });
+    return saved;
+  }
+
+  async deleteSlide(id: string, actor: AdminActor) {
+    const { imagePath } = await this.site.deleteSlide(id);
+    if (imagePath) {
+      await this.storage.deleteFile(imagePath).catch(() => undefined);
+    }
+    await this.audit.log({
+      actorId: actor.id,
+      actorEmail: actor.email,
+      action: 'delete',
+      entity: 'hero-slide',
+      entityId: id,
+    });
+    return { ok: true };
+  }
+
+  // ----- Shop settings -----
+
+  async getShopSettings() {
+    return this.site.publicSettings();
+  }
+
+  async updateShopSettings(
+    key: 'marquee' | 'payments' | 'shipping',
+    value: Record<string, unknown>,
+    actor: AdminActor,
+  ) {
+    const saved = await this.site.updateSetting(key, value);
+    await this.audit.log({
+      actorId: actor.id,
+      actorEmail: actor.email,
+      action: 'update',
+      entity: 'settings',
+      entityId: key,
+      payload: { ...value },
+    });
+    return saved;
+  }
+
+  // ----- Sales stats -----
+
+  async getStats(days = 30) {
+    const span = Math.min(365, Math.max(1, days));
+    const revenueStatuses = [
+      'paid_preparing',
+      'paid_ready_to_ship',
+      'paid_shipped',
+      'paid_delivered',
+    ];
+
+    const [totals] = await this.dataSource.query(
+      `SELECT COUNT(*)::int AS orders,
+              COALESCE(SUM("totalAmount"), 0)::float AS revenue,
+              COALESCE(AVG("totalAmount"), 0)::float AS average
+         FROM orders
+        WHERE status = ANY($1)
+          AND "createdAt" >= now() - ($2 || ' days')::interval`,
+      [revenueStatuses, span],
+    );
+
+    const byStatus = await this.dataSource.query(
+      `SELECT status, COUNT(*)::int AS count
+         FROM orders
+        WHERE "createdAt" >= now() - ($1 || ' days')::interval
+        GROUP BY status
+        ORDER BY count DESC`,
+      [span],
+    );
+
+    const daily = await this.dataSource.query(
+      `SELECT to_char(date_trunc('day', "createdAt"), 'YYYY-MM-DD') AS day,
+              COUNT(*)::int AS orders,
+              COALESCE(SUM("totalAmount"), 0)::float AS revenue
+         FROM orders
+        WHERE status = ANY($1)
+          AND "createdAt" >= now() - ($2 || ' days')::interval
+        GROUP BY 1
+        ORDER BY 1`,
+      [revenueStatuses, span],
+    );
+
+    const topProducts = await this.dataSource.query(
+      `SELECT oi.title,
+              SUM(oi.quantity)::int AS units,
+              SUM(oi.quantity * oi."unitPrice")::float AS revenue
+         FROM order_items oi
+         JOIN orders o ON o.id = oi."orderId"
+        WHERE o.status = ANY($1)
+          AND o."createdAt" >= now() - ($2 || ' days')::interval
+        GROUP BY oi.title
+        ORDER BY units DESC
+        LIMIT 5`,
+      [revenueStatuses, span],
+    );
+
+    return { days: span, totals, byStatus, daily, topProducts };
+  }
+}
+
+interface PromotionDto {
+  name: string;
+  percent: number;
+  scope?: 'all' | 'category' | 'product';
+  categoryId?: string | null;
+  templateId?: string | null;
+  startsAt?: string | null;
+  endsAt?: string | null;
+  isActive?: boolean;
+}
+
+interface SlideDto {
+  headline?: string;
+  subheadline?: string;
+  ctaLabel?: string;
+  ctaHref?: string;
+  isActive?: boolean;
+}
+
+function assertPromotion(dto: PromotionDto): void {
+  if (!dto.name?.trim()) {
+    throw new BadRequestException('La promoción necesita un nombre');
+  }
+  if (!Number.isFinite(dto.percent) || dto.percent < 1 || dto.percent > 90) {
+    throw new BadRequestException('El descuento debe estar entre 1% y 90%');
+  }
+  if (dto.scope === 'category' && !dto.categoryId) {
+    throw new BadRequestException('Elegí la categoría de la promoción');
+  }
+  if (dto.scope === 'product' && !dto.templateId) {
+    throw new BadRequestException('Elegí el producto de la promoción');
   }
 }

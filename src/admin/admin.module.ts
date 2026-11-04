@@ -9,6 +9,7 @@ import { UsersModule } from '@app/users/users.module';
 import { StorageModule } from '@app/storage/storage.module';
 import { NotificationsModule } from '@app/notifications/notifications.module';
 import { SiteModule } from '@app/site/site.module';
+import { Promotion } from '@app/site/entities/promotion.entity';
 import { AdminController } from './admin.controller';
 import { AdminGuard } from './admin.guard';
 import { AdminService } from './admin.service';
@@ -22,6 +23,7 @@ import { AdminAuditService } from './admin-audit.service';
       ProductImage,
       Category,
       User,
+      Promotion,
     ]),
     UsersModule,
     StorageModule,

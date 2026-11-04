@@ -4,9 +4,7 @@ import { MigrationInterface, QueryRunner } from 'typeorm';
  * Webhook idempotency: same (orderId, transactionId) cannot be inserted twice.
  * Lets PaymentsService skip MercadoPago retries cleanly.
  */
-export class AddUniquePaymentDetailIndex1777800000000
-  implements MigrationInterface
-{
+export class AddUniquePaymentDetailIndex1777800000000 implements MigrationInterface {
   name = 'AddUniquePaymentDetailIndex1777800000000';
 
   public async up(queryRunner: QueryRunner): Promise<void> {

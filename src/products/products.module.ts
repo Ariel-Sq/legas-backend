@@ -13,6 +13,7 @@ import { ProductImage } from './entities/product-image.entity';
 import { ProductPriceTier } from './entities/product-price-tier.entity';
 import { Category } from '../categories/entities/category.entity';
 import { StorageModule } from '@app/storage/storage.module';
+import { SiteModule } from '@app/site/site.module';
 import { CacheModule } from '@app/cache/cache.module';
 import { UsersModule } from '@app/users/users.module';
 
@@ -26,6 +27,7 @@ import { UsersModule } from '@app/users/users.module';
       Category,
     ]),
     StorageModule,
+    SiteModule,
     CacheModule,
     UsersModule,
   ],

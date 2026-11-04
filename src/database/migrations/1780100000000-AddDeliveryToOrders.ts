@@ -21,6 +21,8 @@ export class AddDeliveryToOrders1780100000000 implements MigrationInterface {
     await queryRunner.query(
       `ALTER TABLE "orders" DROP COLUMN "deliveryAddress"`,
     );
-    await queryRunner.query(`ALTER TABLE "orders" DROP COLUMN "deliveryMethod"`);
+    await queryRunner.query(
+      `ALTER TABLE "orders" DROP COLUMN "deliveryMethod"`,
+    );
   }
 }

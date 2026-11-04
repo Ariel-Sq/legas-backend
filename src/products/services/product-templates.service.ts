@@ -17,12 +17,14 @@ import {
   SortOrder,
 } from '../dto/list-product-templates-query.dto';
 import { publicImageUrl } from '@app/utils/image-url';
+import { PromotionsService } from '@app/site/promotions.service';
 
 @Injectable()
 export class ProductTemplatesService {
   private readonly logger = new Logger(ProductTemplatesService.name);
 
   constructor(
+    private readonly promotions: PromotionsService,
     @InjectRepository(ProductTemplate)
     private productTemplatesRepository: Repository<ProductTemplate>,
     @InjectRepository(ProductVariation)
@@ -36,8 +38,7 @@ export class ProductTemplatesService {
   ): Promise<ProductTemplate[]> {
     const sortField = query.sort ?? ProductTemplateSortField.NAME;
     const sortOrder = (query.order ?? SortOrder.ASC).toUpperCase() as
-      | 'ASC'
-      | 'DESC';
+      'ASC' | 'DESC';
 
     // The public catalogue only exposes published products: hiding one in the
     // panel removes it from the shop, featured and "recién llegados". The admin
@@ -86,6 +87,7 @@ export class ProductTemplatesService {
       });
     });
 
+    await this.applyPromotions(res);
     return res;
   }
 
@@ -117,6 +119,7 @@ export class ProductTemplatesService {
       });
     });
 
+    await this.applyPromotions([template]);
     return template;
   }
 
@@ -144,6 +147,7 @@ export class ProductTemplatesService {
       });
     });
 
+    await this.applyPromotions([template]);
     return template;
   }
 
@@ -266,5 +270,33 @@ export class ProductTemplatesService {
 
     await this.productTemplatesRepository.remove(template);
     this.logger.log(`Product template with ID ${id} deleted successfully`);
+  }
+
+  /**
+   * Discounted price is what the shop shows AND what the cart charges: the
+   * original stays in `originalPrice` so the UI can strike it through.
+   */
+  private async applyPromotions(templates: ProductTemplate[]): Promise<void> {
+    const promos = await this.promotions.activePromotions();
+    if (promos.length === 0) return;
+
+    for (const template of templates) {
+      const categoryIds = (template.categories ?? []).map((c) => c.id);
+      const percent = this.promotions.bestPercent(
+        promos,
+        template.id,
+        categoryIds,
+      );
+      if (percent <= 0) continue;
+
+      for (const variation of template.variations ?? []) {
+        const original = Number(variation.price);
+        (variation as unknown as { originalPrice?: number }).originalPrice =
+          original;
+        variation.price = this.promotions
+          .apply(original, percent)
+          .toFixed(2) as unknown as number;
+      }
+    }
   }
 }

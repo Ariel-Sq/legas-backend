@@ -1,8 +1,6 @@
 import { MigrationInterface, QueryRunner } from 'typeorm';
 
-export class AddIsFeaturedToProductTemplates1779100000000
-  implements MigrationInterface
-{
+export class AddIsFeaturedToProductTemplates1779100000000 implements MigrationInterface {
   name = 'AddIsFeaturedToProductTemplates1779100000000';
 
   public async up(queryRunner: QueryRunner): Promise<void> {

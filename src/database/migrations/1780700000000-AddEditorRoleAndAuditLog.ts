@@ -4,9 +4,7 @@ import { MigrationInterface, QueryRunner } from 'typeorm';
  * `editor` role for the admin panel, plus an audit log so changes made by
  * delegated users can be traced (who, what, when).
  */
-export class AddEditorRoleAndAuditLog1780700000000
-  implements MigrationInterface
-{
+export class AddEditorRoleAndAuditLog1780700000000 implements MigrationInterface {
   public async up(queryRunner: QueryRunner): Promise<void> {
     await queryRunner.query(
       `ALTER TYPE "users_role_enum" ADD VALUE IF NOT EXISTS 'editor'`,

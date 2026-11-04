@@ -6,9 +6,7 @@ import { MigrationInterface, QueryRunner } from 'typeorm';
  * them a trámite code — we return it instantly and store the request so the
  * admin (via chat) can process it.
  */
-export class CreateCancellationRequests1779700000000
-  implements MigrationInterface
-{
+export class CreateCancellationRequests1779700000000 implements MigrationInterface {
   public async up(queryRunner: QueryRunner): Promise<void> {
     await queryRunner.query(`
       CREATE TABLE "cancellation_requests" (
