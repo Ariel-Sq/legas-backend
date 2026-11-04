@@ -17,6 +17,7 @@ import { ApiOperation, ApiTags } from '@nestjs/swagger';
 import { AdminGuard, Roles, type AdminActor } from './admin.guard';
 import { AdminService } from './admin.service';
 import {
+  CreateCategoryDto,
   CreateProductDto,
   CreateVariationDto,
   InviteUserDto,
@@ -70,6 +71,12 @@ export class AdminController {
   @Roles(UserRole.OWNER, UserRole.ADMIN, UserRole.EDITOR)
   listCategories() {
     return this.adminService.listCategories();
+  }
+
+  @Post('categories')
+  @Roles(UserRole.OWNER, UserRole.ADMIN, UserRole.EDITOR)
+  createCategory(@Body() dto: CreateCategoryDto, @Req() req: any) {
+    return this.adminService.createCategory(dto.name, this.actor(req));
   }
 
   @Post('products')

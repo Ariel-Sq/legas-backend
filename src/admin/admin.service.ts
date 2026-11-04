@@ -214,12 +214,9 @@ export class AdminService {
    * mistake: it starts hidden unless asked otherwise.
    */
   async createProduct(dto: CreateProductDto, actor: AdminActor) {
-    const categories = await this.categories.findBy({
-      id: In(dto.categoryIds),
-    });
-    if (categories.length === 0) {
-      throw new BadRequestException('Elegí al menos una categoría');
-    }
+    const categories = dto.categoryIds?.length
+      ? await this.categories.findBy({ id: In(dto.categoryIds) })
+      : [];
 
     const base =
       dto.name
@@ -313,31 +310,42 @@ export class AdminService {
     });
     if (!template) throw new NotFoundException('Producto no encontrado');
 
-    const medida = dto.medida.trim().replace(/\s+/g, '');
-    if (!/^[0-9]+(x[0-9]+){1,2}$/i.test(medida)) {
-      throw new BadRequestException(
-        'La medida debe tener el formato 100x60 o 100x60x40',
-      );
+    // The label is free text: "100x60", "2 plazas", "Único", "King"…
+    const label = dto.medida.trim().replace(/\s+/g, ' ');
+    if (!label) {
+      throw new BadRequestException('Ponele un nombre a la variante');
     }
 
-    const sku = `${template.slug}-${medida.toLowerCase()}`;
-    const exists = await this.variations.findOne({ where: { sku } });
-    if (exists) {
-      throw new BadRequestException(
-        `Ya existe una variante con la medida ${medida}`,
-      );
+    const slugPart =
+      label
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, '-')
+        .replace(/^-+|-+$/g, '')
+        .slice(0, 40) || 'variante';
+
+    let sku = `${template.slug}-${slugPart}`;
+    let suffix = 2;
+    while (await this.variations.findOne({ where: { sku } })) {
+      sku = `${template.slug}-${slugPart}-${suffix}`;
+      suffix += 1;
     }
 
-    const material =
-      (template.variations?.[0]?.attributes?.material as string) ?? 'Álamo';
+    const material = template.variations?.[0]?.attributes?.material as
+      | string
+      | undefined;
 
     const variation = this.variations.create({
       template_id: template.id,
       sku,
-      name: `${template.name} · ${medida} cm`,
+      name: `${template.name} · ${label}`,
       price: dto.price,
       stock: 0,
-      attributes: { medida: `${medida} cm`, material },
+      attributes: {
+        medida: label,
+        ...(material ? { material } : {}),
+      },
       sort_order: template.variations?.length ?? 0,
     });
     const saved = await this.variations.save(variation);
@@ -348,7 +356,7 @@ export class AdminService {
       action: 'create',
       entity: 'variation',
       entityId: saved.id,
-      payload: { medida, price: dto.price, sku },
+      payload: { variant: label, price: dto.price, sku },
     });
     return saved;
   }
@@ -729,5 +737,51 @@ export class AdminService {
       entity: 'hero',
     });
     return this.getHero();
+  }
+
+  // ----- Categories -----
+
+  /** Create a category from the panel (new product form / editor). */
+  async createCategory(name: string, actor: AdminActor) {
+    const clean = name.trim();
+    if (clean.length < 2) {
+      throw new BadRequestException('El nombre es demasiado corto');
+    }
+
+    const base =
+      clean
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, '-')
+        .replace(/^-+|-+$/g, '')
+        .slice(0, 80) || 'categoria';
+
+    let slug = base;
+    let suffix = 2;
+    while (await this.categories.findOne({ where: { slug } })) {
+      slug = `${base}-${suffix}`;
+      suffix += 1;
+    }
+
+    const category = this.categories.create({
+      name: clean,
+      slug,
+      level: 1,
+      is_active: true,
+      sort_order: 0,
+    });
+    const saved = await this.categories.save(category);
+
+    await this.audit.log({
+      actorId: actor.id,
+      actorEmail: actor.email,
+      action: 'create',
+      entity: 'category',
+      entityId: saved.id,
+      payload: { name: saved.name, slug: saved.slug },
+    });
+
+    return { id: saved.id, name: saved.name, slug: saved.slug };
   }
 }

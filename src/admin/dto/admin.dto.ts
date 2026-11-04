@@ -25,9 +25,10 @@ export class CreateProductDto {
   @IsString()
   description?: string;
 
+  @IsOptional()
   @IsArray()
   @IsUUID('4', { each: true })
-  categoryIds: string[];
+  categoryIds?: string[];
 
   @IsOptional()
   @IsBoolean()
@@ -71,9 +72,12 @@ export class UpdateProductDto {
 }
 
 export class CreateVariationDto {
-  /** Size as typed by the shop, e.g. "100x60" or "100x60x40". */
+  /**
+   * Free-form label: "100x60", "2 plazas", "Único", "King"… Anything the
+   * product needs; it is not parsed as a measurement.
+   */
   @IsString()
-  @MaxLength(40)
+  @MaxLength(60)
   medida: string;
 
   @IsNumber({ maxDecimalPlaces: 2 })
@@ -137,6 +141,13 @@ export class InviteUserDto {
 
   @IsIn([UserRole.ADMIN, UserRole.EDITOR, UserRole.CUSTOMER])
   role: UserRole;
+}
+
+export class CreateCategoryDto {
+  @IsString()
+  @MinLength(2)
+  @MaxLength(255)
+  name: string;
 }
 
 export class UpdateHeroDto {
