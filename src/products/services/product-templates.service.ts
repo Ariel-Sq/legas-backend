@@ -39,10 +39,13 @@ export class ProductTemplatesService {
       | 'ASC'
       | 'DESC';
 
-    const where =
-      query.featured !== undefined
-        ? { is_featured: query.featured }
-        : undefined;
+    // The public catalogue only exposes published products: hiding one in the
+    // panel removes it from the shop, featured and "recién llegados". The admin
+    // uses its own endpoints, so nothing there is affected.
+    const where = {
+      is_active: true,
+      ...(query.featured !== undefined ? { is_featured: query.featured } : {}),
+    };
 
     // `take` combined with joined relations applies the LIMIT to the joined
     // rows (a template with 3 variations eats 3 slots), so resolve the page
@@ -102,7 +105,9 @@ export class ProductTemplatesService {
       order: { variations: { sort_order: 'ASC' } },
     });
 
-    if (!template) {
+    // Hidden in the panel = not reachable from the shop, even with a direct
+    // link (keeps "oculto" consistent with the lists).
+    if (!template || template.is_active === false) {
       throw new NotFoundException(`Product template "${slugOrId}" not found`);
     }
 
