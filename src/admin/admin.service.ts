@@ -191,7 +191,12 @@ export class AdminService {
     const users = await this.users
       .createQueryBuilder('u')
       .where('u.role IN (:...roles)', {
-        roles: [UserRole.OWNER, UserRole.ADMIN, UserRole.EDITOR],
+        roles: [
+          UserRole.OWNER,
+          UserRole.ADMIN,
+          UserRole.EDITOR,
+          UserRole.SALES,
+        ],
       })
       .orWhere('LOWER(u.email) = :ownerEmail', { ownerEmail })
       .orderBy('u.createdAt', 'ASC')
