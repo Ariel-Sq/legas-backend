@@ -79,6 +79,12 @@ export class AdminController {
     return this.adminService.createCategory(dto.name, this.actor(req));
   }
 
+  @Delete('categories/:id')
+  @Roles(UserRole.OWNER, UserRole.ADMIN, UserRole.EDITOR)
+  deleteCategory(@Param('id') id: string, @Req() req: any) {
+    return this.adminService.deleteCategory(id, this.actor(req));
+  }
+
   @Post('products')
   @Roles(UserRole.OWNER, UserRole.ADMIN, UserRole.EDITOR)
   createProduct(@Body() dto: CreateProductDto, @Req() req: any) {

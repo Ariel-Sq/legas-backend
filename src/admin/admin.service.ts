@@ -1032,4 +1032,28 @@ export class AdminService {
     });
     return { ok: true };
   }
+
+  /** Delete a category; products that used it stay, just without it. */
+  async deleteCategory(id: string, actor: AdminActor) {
+    const category = await this.categories.findOne({ where: { id } });
+    if (!category) throw new NotFoundException('Categoría no encontrada');
+
+    const used = await this.dataSource.query(
+      'SELECT COUNT(*)::int AS count FROM product_templates_categories WHERE category_id = $1',
+      [id],
+    );
+    const products = Number(used?.[0]?.count ?? 0);
+
+    await this.categories.remove(category);
+
+    await this.audit.log({
+      actorId: actor.id,
+      actorEmail: actor.email,
+      action: 'delete',
+      entity: 'category',
+      entityId: id,
+      payload: { name: category.name, slug: category.slug, products },
+    });
+    return { ok: true, products };
+  }
 }
