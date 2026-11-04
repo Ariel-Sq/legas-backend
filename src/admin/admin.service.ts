@@ -131,8 +131,22 @@ export class AdminService {
     return this.categories.find({ order: { name: 'ASC' } });
   }
 
+  /**
+   * Only people with panel access (owner/admin/editor) are listed. Store
+   * customers are not staff and never show up here; to give one access, invite
+   * their email — the invite upgrades the existing row instead of duplicating
+   * it.
+   */
   async listUsers() {
-    const users = await this.users.find({ order: { createdAt: 'ASC' } });
+    const ownerEmail = (process.env.OWNER_EMAIL || '').toLowerCase();
+    const users = await this.users
+      .createQueryBuilder('u')
+      .where('u.role IN (:...roles)', {
+        roles: [UserRole.OWNER, UserRole.ADMIN, UserRole.EDITOR],
+      })
+      .orWhere('LOWER(u.email) = :ownerEmail', { ownerEmail })
+      .orderBy('u.createdAt', 'ASC')
+      .getMany();
     return users.map((u) => ({
       id: u.id,
       email: u.email,
@@ -573,9 +587,14 @@ export class AdminService {
       payload: { email, role: dto.role },
     });
 
-    const site =
-      process.env.FRONTEND_URL?.replace(/\/$/, '') ??
-      'https://legasmuebles.com';
+    const site = (
+      process.env.FRONTEND_URL ?? 'https://legasmuebles.com'
+    ).replace(/\/$/, '');
+    // The panel lives on its own subdomain (admin.<site>); /admin on the
+    // storefront answers 404 by design.
+    const panel =
+      process.env.ADMIN_PANEL_URL ??
+      site.replace('://www.', '://').replace('://', '://admin.');
     const roleLabel =
       dto.role === UserRole.ADMIN
         ? 'administrador'
@@ -586,8 +605,8 @@ export class AdminService {
       saved.email,
       'Te invitaron al panel de Legas Muebles',
       `Hola!\n\nTe habilitamos acceso al panel de Legas Muebles con rol de ${roleLabel}.\n\n` +
-        `Para entrar: andá a ${site}, iniciá sesión con Google usando este mismo email ` +
-        `y después abrí ${site}/admin.\n\n` +
+        `Para entrar: abrí ${panel}, ingresá el usuario y la contraseña del equipo ` +
+        `(te los pasamos aparte) y después iniciá sesión con Google usando este mismo email.\n\n` +
         `Si no esperabas este mensaje, ignorá este correo.\n\n— Legas Muebles`,
     );
 
