@@ -3,6 +3,7 @@ import { Reflector } from '@nestjs/core';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import { ClassSerializerInterceptor, ValidationPipe } from '@nestjs/common';
 import cookieParser from 'cookie-parser';
+import helmet from 'helmet';
 import { CORS_ORIGINS } from '@app/utils/environments';
 import { AuthMiddleware } from '@app/auth/middleware/auth.middleware';
 import { GlobalExceptionFilter } from '@app/global-exception.filter';
@@ -14,6 +15,17 @@ import { GlobalExceptionFilter } from '@app/global-exception.filter';
  * Keep every global concern here so the two runtimes never drift.
  */
 export function configureApp(app: INestApplication): void {
+  // Baseline security headers (hides X-Powered-By, sets COOP, nosniff, etc.).
+  // CSP is disabled here: this is a JSON API plus image responses, and the
+  // images are intentionally embeddable cross-origin by the storefront, so
+  // CORP is `cross-origin` instead of the helmet default.
+  app.use(
+    helmet({
+      contentSecurityPolicy: false,
+      crossOriginResourcePolicy: { policy: 'cross-origin' },
+    }),
+  );
+
   // Enable CORS with explicit allowlist
   app.enableCors({ origin: CORS_ORIGINS, credentials: true });
 
