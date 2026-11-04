@@ -38,6 +38,14 @@ const MAX_IMAGES_PER_VARIATION = 6;
 const MAX_IMAGE_BYTES = 4 * 1024 * 1024;
 const ALLOWED_IMAGE_TYPES = ['image/webp', 'image/jpeg', 'image/png'];
 
+/**
+ * "100x60", "100x60x40", "100 x 60 cm" → a measurement; everything else is a
+ * plain variant label ("2 plazas", "Único", "Blanco").
+ */
+function isMeasurement(label: string): boolean {
+  return /^\d+(\s*[x×]\s*\d+){1,2}(\s*cm)?$/i.test(label.trim());
+}
+
 @Injectable()
 export class AdminService {
   private readonly logger = new Logger(AdminService.name);
@@ -342,8 +350,10 @@ export class AdminService {
       name: `${template.name} · ${label}`,
       price: dto.price,
       stock: 0,
+      // Keep the attribute meaningful: a real measurement goes to `medida`,
+      // anything else ("2 plazas", "Único") is a variant label.
       attributes: {
-        medida: label,
+        ...(isMeasurement(label) ? { medida: label } : { variante: label }),
         ...(material ? { material } : {}),
       },
       sort_order: template.variations?.length ?? 0,
