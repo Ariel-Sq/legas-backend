@@ -1,7 +1,6 @@
 import {
   Injectable,
   NotFoundException,
-  BadRequestException,
   UnauthorizedException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
@@ -143,20 +142,7 @@ export class CartService {
       );
     }
 
-    // Check stock availability - comprehensive validation
-    if (productVariation.stock <= 0) {
-      throw new BadRequestException(
-        `Product ${productVariation.name} is out of stock`,
-      );
-    }
-
-    // Check if there's enough stock for the requested quantity
-    if (productVariation.stock < quantity) {
-      throw new BadRequestException(
-        `Only ${productVariation.stock} units available for ${productVariation.name}. Requested: ${quantity}`,
-      );
-    }
-
+    // Every product is made to order: there is no stock to check.
     // Get or create cart
     const cart = await this.getOrCreateCart(userId, sessionId);
 
@@ -243,12 +229,6 @@ export class CartService {
     if (!productVariation) {
       throw new NotFoundException(
         `Product variation with ID ${cartItem.productVariationId} not found`,
-      );
-    }
-
-    if (productVariation.stock < quantity) {
-      throw new BadRequestException(
-        `Only ${productVariation.stock} units available for ${productVariation.name}. Requested: ${quantity}`,
       );
     }
 

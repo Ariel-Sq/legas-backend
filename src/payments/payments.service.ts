@@ -144,20 +144,9 @@ export class PaymentsService {
         Number(cart.totalPrice) * (1 + MERCADOPAGO_SURCHARGE_RATE) * 100,
       ) / 100;
 
-    // Phase 1 — atomic reserve + order create (no network calls inside).
+    // Phase 1 — order create (no network calls inside). Products are made to
+    // order, so nothing is reserved or decremented.
     const order = await this.dataSource.transaction(async (manager) => {
-      const ids = checkoutItems.map((i) => i.id);
-      await this.productsService.lockVariationsForUpdate(manager, ids);
-
-      // Atomic decrement; throws BadRequestException if any item is short.
-      for (const item of checkoutItems) {
-        await this.productsService.updateStockWithManager(
-          manager,
-          item.id,
-          -item.quantity,
-        );
-      }
-
       return this.orderService.createOrderInTx(manager, {
         userId,
         sessionId,
@@ -304,15 +293,6 @@ export class PaymentsService {
       : undefined;
 
     const order = await this.dataSource.transaction(async (manager) => {
-      const ids = checkoutItems.map((i) => i.id);
-      await this.productsService.lockVariationsForUpdate(manager, ids);
-      for (const item of checkoutItems) {
-        await this.productsService.updateStockWithManager(
-          manager,
-          item.id,
-          -item.quantity,
-        );
-      }
       return this.orderService.createOrderInTx(manager, {
         userId,
         sessionId,
@@ -487,13 +467,10 @@ export class PaymentsService {
       reason === 'expired' ? OrderStatus.EXPIRED : OrderStatus.CANCELLED;
 
     const compensated = await this.dataSource.transaction(async (manager) => {
-      const ids = order.items.map((i) => i.productVariationId);
-      await this.productsService.lockVariationsForUpdate(manager, ids);
-
       // Claim the compensation atomically: only the caller that flips the
-      // order out of its pre-payment state restores the stock. Protects
-      // against concurrent release (lazy + cron) double-restoring, and
-      // against cancelling an order a webhook just marked as paid.
+      // order out of its pre-payment state wins. Protects against concurrent
+      // release (lazy + cron) and against cancelling an order a webhook just
+      // marked as paid.
       const claimed = await manager
         .getRepository(Order)
         .createQueryBuilder()
@@ -506,13 +483,7 @@ export class PaymentsService {
         .execute();
       if (!claimed.affected) return false;
 
-      for (const item of order.items) {
-        await this.productsService.updateStockWithManager(
-          manager,
-          item.productVariationId,
-          item.quantity,
-        );
-      }
+      // No stock to restore: products are made to order.
       return true;
     });
     if (compensated) {
