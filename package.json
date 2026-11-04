@@ -37,8 +37,8 @@
     "@supabase/supabase-js": "^2.57.2",
     "@types/cookie-parser": "^1.4.10",
     "@types/multer": "^2.0.0",
-    "@vercel/blob": "^2.6.1",
-    "axios": "^1.12.0",
+    "@vercel/blob": "^2.8.2",
+    "axios": "^1.21.0",
     "bcrypt": "^6.0.0",
     "cache-manager": "^7.2.3",
     "class-transformer": "^0.5.1",
@@ -48,9 +48,9 @@
     "helmet": "^8.3.0",
     "jsonwebtoken": "^9.0.3",
     "mercadopago": "^2.8.0",
-    "multer": "^2.0.2",
+    "multer": "^2.5.0",
     "node-cache": "^5.1.2",
-    "nodemailer": "^9.0.5",
+    "nodemailer": "^10.3.1",
     "pg": "^8.16.3",
     "reflect-metadata": "^0.2.2",
     "rxjs": "^7.8.1",
@@ -83,6 +83,9 @@
     "tsconfig-paths": "^4.2.0",
     "typescript": "^5.7.3",
     "typescript-eslint": "^8.20.0"
+  },
+  "overrides": {
+    "multer": "^2.5.0"
   },
   "jest": {
     "moduleFileExtensions": [
