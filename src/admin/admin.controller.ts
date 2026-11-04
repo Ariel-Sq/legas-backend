@@ -232,13 +232,13 @@ export class AdminController {
   }
 
   @Get('reviews')
-  @Roles(UserRole.OWNER, UserRole.ADMIN, UserRole.SALES)
+  @Roles(UserRole.OWNER, UserRole.ADMIN, UserRole.EDITOR, UserRole.SALES)
   listReviews(@Query('status') status?: string) {
     return this.adminService.listReviews(status);
   }
 
   @Patch('reviews/:id/status')
-  @Roles(UserRole.OWNER, UserRole.ADMIN, UserRole.SALES)
+  @Roles(UserRole.OWNER, UserRole.ADMIN, UserRole.EDITOR, UserRole.SALES)
   setReviewStatus(
     @Param('id') id: string,
     @Body() dto: UpdateReviewStatusDto,
