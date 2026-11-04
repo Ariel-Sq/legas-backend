@@ -52,6 +52,7 @@ export class AdminController {
   }
 
   @Get('products')
+  @Roles(UserRole.OWNER, UserRole.ADMIN, UserRole.EDITOR)
   @ApiOperation({ summary: 'List products with a summary row per template' })
   listProducts(
     @Query('q') q?: string,
@@ -66,6 +67,7 @@ export class AdminController {
   }
 
   @Get('categories')
+  @Roles(UserRole.OWNER, UserRole.ADMIN, UserRole.EDITOR)
   listCategories() {
     return this.adminService.listCategories();
   }
@@ -77,6 +79,7 @@ export class AdminController {
   }
 
   @Get('products/:id')
+  @Roles(UserRole.OWNER, UserRole.ADMIN, UserRole.EDITOR)
   getProduct(@Param('id') id: string) {
     return this.adminService.getProduct(id);
   }
