@@ -36,6 +36,11 @@ export function configureApp(app: INestApplication): void {
       '/api/images', // fetched by the Next.js image optimizer
       '/api/payments/mercadopago/webhook', // MercadoPago servers
       '/api/cron/', // Vercel Cron (guarded by CRON_SECRET)
+      // The panel is its own deployment and every /api/admin route already
+      // requires a Bearer JWT whose DB role is re-checked per request
+      // (AdminGuard). Keeping it out of the frontend-key gate means the
+      // panel doesn't need a copy of the storefront's shared secret.
+      '/api/admin',
     ];
     app.use(
       (
