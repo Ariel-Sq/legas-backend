@@ -1391,24 +1391,32 @@ interface SlideDto {
 }
 
 /**
- * The panel sends date-only values ("2026-11-04"). A promotion that ends today
- * must stay live until 23:59, otherwise it would expire at midnight UTC and
- * look broken.
+ * The panel sends date-only values ("2026-11-04"). They must be read as local
+ * days: `new Date('2026-11-04')` is UTC midnight, which in Argentina is the
+ * previous afternoon, and a promotion ending "today" would expire a day early.
  */
+function parseDateOnly(
+  value: string,
+): { y: number; m: number; d: number } | null {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
+  if (!match) return null;
+  return { y: Number(match[1]), m: Number(match[2]) - 1, d: Number(match[3]) };
+}
+
 function normalizeStart(value?: string | null): Date | null {
   if (!value) return null;
+  const parts = parseDateOnly(value);
+  if (parts) return new Date(parts.y, parts.m, parts.d, 0, 0, 0, 0);
   const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return null;
-  if (/^\d{4}-\d{2}-\d{2}$/.test(value)) date.setHours(0, 0, 0, 0);
-  return date;
+  return Number.isNaN(date.getTime()) ? null : date;
 }
 
 function normalizeEnd(value?: string | null): Date | null {
   if (!value) return null;
+  const parts = parseDateOnly(value);
+  if (parts) return new Date(parts.y, parts.m, parts.d, 23, 59, 59, 999);
   const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return null;
-  if (/^\d{4}-\d{2}-\d{2}$/.test(value)) date.setHours(23, 59, 59, 999);
-  return date;
+  return Number.isNaN(date.getTime()) ? null : date;
 }
 
 function assertPromotion(dto: PromotionDto): void {
