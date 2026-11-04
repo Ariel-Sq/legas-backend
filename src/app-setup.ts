@@ -23,6 +23,9 @@ export function configureApp(app: INestApplication): void {
     helmet({
       contentSecurityPolicy: false,
       crossOriginResourcePolicy: { policy: 'cross-origin' },
+      // Vercel already sends HSTS with a 2-year max-age + preload-friendly
+      // settings; letting helmet emit its own 1-year header would downgrade it.
+      hsts: false,
     }),
   );
 
