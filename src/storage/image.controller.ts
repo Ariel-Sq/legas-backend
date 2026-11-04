@@ -7,6 +7,7 @@ import {
   Query,
 } from '@nestjs/common';
 import { ApiOperation, ApiResponse, ApiTags, ApiQuery } from '@nestjs/swagger';
+import { SkipThrottle } from '@nestjs/throttler';
 import { CacheService } from '@app/cache/cache.service';
 import type { IStorageService } from './storage.interface';
 import { Inject } from '@nestjs/common';
@@ -18,6 +19,10 @@ import { LOCAL_STORAGE } from './storage.service.local';
 const readFileAsync = promisify(fs.readFile);
 
 @ApiTags('Images')
+// Images are static assets: a page with 12 photos would blow any per-minute
+// budget and the grid would show broken thumbnails (429). The rest of the API
+// stays throttled.
+@SkipThrottle()
 @Controller('images')
 export class ImageController {
   constructor(
@@ -87,10 +92,12 @@ export class ImageController {
       'Content-Type': contentType,
       // In development images are edited in place, so never let the browser
       // or the image optimizer keep a stale copy.
+      // Uploads always get a fresh filename, so the bytes behind a URL never
+      // change: let the browser and the image optimizer keep them forever.
       'Cache-Control':
         process.env.NODE_ENV === 'development'
           ? 'no-cache, no-store, must-revalidate'
-          : 'public, max-age=3600',
+          : 'public, max-age=31536000, immutable',
     });
     res.send(imageBuffer);
   }
