@@ -1139,8 +1139,8 @@ export class AdminService {
         scope: dto.scope ?? 'all',
         categoryId: dto.categoryId ?? null,
         templateId: dto.templateId ?? null,
-        startsAt: dto.startsAt ? new Date(dto.startsAt) : null,
-        endsAt: dto.endsAt ? new Date(dto.endsAt) : null,
+        startsAt: normalizeStart(dto.startsAt),
+        endsAt: normalizeEnd(dto.endsAt),
         isActive: dto.isActive ?? true,
       }),
     );
@@ -1171,11 +1171,9 @@ export class AdminService {
         ? { templateId: dto.templateId || null }
         : {}),
       ...(dto.startsAt !== undefined
-        ? { startsAt: dto.startsAt ? new Date(dto.startsAt) : null }
+        ? { startsAt: normalizeStart(dto.startsAt) }
         : {}),
-      ...(dto.endsAt !== undefined
-        ? { endsAt: dto.endsAt ? new Date(dto.endsAt) : null }
-        : {}),
+      ...(dto.endsAt !== undefined ? { endsAt: normalizeEnd(dto.endsAt) } : {}),
       ...(dto.isActive !== undefined ? { isActive: dto.isActive } : {}),
     });
 
@@ -1390,6 +1388,27 @@ interface SlideDto {
   ctaLabel?: string;
   ctaHref?: string;
   isActive?: boolean;
+}
+
+/**
+ * The panel sends date-only values ("2026-11-04"). A promotion that ends today
+ * must stay live until 23:59, otherwise it would expire at midnight UTC and
+ * look broken.
+ */
+function normalizeStart(value?: string | null): Date | null {
+  if (!value) return null;
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return null;
+  if (/^\d{4}-\d{2}-\d{2}$/.test(value)) date.setHours(0, 0, 0, 0);
+  return date;
+}
+
+function normalizeEnd(value?: string | null): Date | null {
+  if (!value) return null;
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return null;
+  if (/^\d{4}-\d{2}-\d{2}$/.test(value)) date.setHours(23, 59, 59, 999);
+  return date;
 }
 
 function assertPromotion(dto: PromotionDto): void {
