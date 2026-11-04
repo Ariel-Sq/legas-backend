@@ -280,12 +280,10 @@ export class AdminService {
     if (dto.is_featured !== undefined) template.is_featured = dto.is_featured;
 
     if (dto.categoryIds) {
-      if (dto.categoryIds.length === 0) {
-        throw new BadRequestException('Elegí al menos una categoría');
-      }
-      template.categories = await this.categories.findBy({
-        id: In(dto.categoryIds),
-      });
+      // An empty list is valid: the product simply has no category yet.
+      template.categories = dto.categoryIds.length
+        ? await this.categories.findBy({ id: In(dto.categoryIds) })
+        : [];
       if (template.categories.length !== dto.categoryIds.length) {
         throw new BadRequestException('Alguna categoría no existe');
       }
