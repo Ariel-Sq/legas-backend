@@ -178,10 +178,7 @@ export class AdminController {
   @Post('hero/image')
   @Roles(UserRole.OWNER, UserRole.ADMIN, UserRole.EDITOR)
   @UseInterceptors(FileInterceptor('file'))
-  uploadHeroImage(
-    @UploadedFile() file: Express.Multer.File,
-    @Req() req: any,
-  ) {
+  uploadHeroImage(@UploadedFile() file: Express.Multer.File, @Req() req: any) {
     return this.adminService.uploadHeroImage(file, this.actor(req));
   }
 
