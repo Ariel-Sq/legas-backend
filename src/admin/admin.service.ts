@@ -16,6 +16,7 @@ import { User, UserRole, AuthProvider } from '@app/users/entities/user.entity';
 import { Order, OrderStatus } from '@app/payments/entities/order.entity';
 import { EmailService } from '@app/notifications/email.service';
 import { SiteService } from '@app/site/site.service';
+import { publicImageUrl } from '@app/utils/image-url';
 import type { IStorageService } from '@app/storage/storage.interface';
 import { AdminAuditService } from './admin-audit.service';
 import {
@@ -104,6 +105,13 @@ export class AdminService {
       mainImage: t.variations.length
         ? (imageByVariation.get(t.variations[0].id) ?? null)
         : null,
+      // Absolute URL (Blob CDN in production): the panel renders thumbnails
+      // straight from it instead of proxying each byte through the API.
+      mainImageUrl: t.variations.length
+        ? publicImageUrl({
+            path: imageByVariation.get(t.variations[0].id) ?? undefined,
+          }) || null
+        : null,
     }));
   }
 
@@ -132,7 +140,9 @@ export class AdminService {
       variations: variations.map((v) => ({
         ...v,
         stock: undefined,
-        images: images.filter((img) => img.variation_id === v.id),
+        images: images
+          .filter((img) => img.variation_id === v.id)
+          .map((img) => ({ ...img, url: publicImageUrl(img) })),
       })),
     };
   }

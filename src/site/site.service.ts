@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
+import { publicImageUrl } from '@app/utils/image-url';
 import { HeroBanner } from './entities/hero-banner.entity';
 
 export const HERO_DEFAULTS = {
@@ -87,8 +88,8 @@ export class SiteService {
   /** Public URL of a stored image, or null when there is none. */
   imageUrlFor(imagePath: string | null): string | null {
     if (!imagePath) return null;
-    const base = (process.env.BACKEND_URL ?? '').replace(/\/$/, '');
-    return `${base}/api/images/${imagePath}`;
+    // Blob CDN in production, the /api/images proxy on local storage.
+    return publicImageUrl({ path: imagePath });
   }
 
   toPublic(hero: HeroBanner): PublicHero {
