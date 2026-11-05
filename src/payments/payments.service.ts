@@ -114,12 +114,17 @@ export class PaymentsService {
         idempotencyKey,
       );
       if (existing?.preferenceId) {
-        // No MP round-trip on a retry: the Checkout Pro URL is deterministic
-        // and a slow `preference.get` was leaving the shopper on "Procesando".
-        return {
-          id: existing.preferenceId,
-          checkoutUrl: this.checkoutUrlForPreference(existing.preferenceId),
-        };
+        // Reuse only while MP still accepts it. Past the expiration window the
+        // link would fail on MP's side, so let the flow create a fresh order.
+        const ageMs = Date.now() - new Date(existing.createdAt).getTime();
+        if (ageMs < CHECKOUT_EXPIRATION_MINUTES * 60_000) {
+          // No MP round-trip on a retry: the Checkout Pro URL is deterministic
+          // and a slow `preference.get` was leaving the shopper on "Procesando".
+          return {
+            id: existing.preferenceId,
+            checkoutUrl: this.checkoutUrlForPreference(existing.preferenceId),
+          };
+        }
       }
     }
 
