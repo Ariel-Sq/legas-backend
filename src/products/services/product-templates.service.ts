@@ -294,6 +294,14 @@ export class ProductTemplatesService {
         categoryIds,
         'mp',
       );
+      // "Todos los medios": already inside the cash price, but the card price
+      // (cash + markup) has to apply it too.
+      const bothPercent = this.promotions.bestPercent(
+        promos,
+        template.id,
+        categoryIds,
+        'both',
+      );
       if (cashPercent <= 0 && mpPercent <= 0) continue;
 
       for (const variation of template.variations ?? []) {
@@ -304,6 +312,12 @@ export class ProductTemplatesService {
           variation.price = this.promotions
             .apply(original, cashPercent)
             .toFixed(2) as unknown as number;
+        }
+        if (bothPercent > 0) {
+          // The shop needs to reproduce the card price: cash price + markup,
+          // then this discount (and the MercadoPago-only one, if any).
+          (variation as unknown as { allPercent?: number }).allPercent =
+            bothPercent;
         }
         if (mpPercent > 0) {
           // Card-only discount: the cash price stays, the checkout applies

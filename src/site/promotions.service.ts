@@ -8,12 +8,14 @@ import { ProductVariation } from '@app/products/entities/product-variation.entit
  * - `cash`: catalogue price → "all" and "offline" promos
  * - `offline`: only "offline" promos (used to keep them out of the card price)
  * - `mp`: only "mercadopago" promos ("all" is already inside the cash price)
+ * - `both`: only "all" promos (discount that also lowers the card price)
  */
-export type Channel = 'cash' | 'offline' | 'mp';
+export type Channel = 'cash' | 'offline' | 'mp' | 'both';
 
 function channelMatches(method: string, channel: Channel): boolean {
   if (channel === 'cash') return method === 'all' || method === 'offline';
   if (channel === 'mp') return method === 'mercadopago';
+  if (channel === 'both') return method === 'all';
   return method === 'offline';
 }
 
