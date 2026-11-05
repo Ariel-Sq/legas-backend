@@ -607,6 +607,45 @@ export class PaymentsService {
     }
   }
 
+  /**
+   * Verify a payment on demand when the shopper comes back from MercadoPago.
+   * The webhook is authoritative, but it can land a few seconds after the
+   * redirect; the success page would otherwise show "confirmando" for a payment
+   * that already went through. Only payments belonging to the order are
+   * processed, and `handlePaymentNotification` stays idempotent.
+   */
+  async verifyPaymentForOrder(
+    orderId: string,
+    paymentId?: string,
+  ): Promise<void> {
+    if (!paymentId) return;
+
+    const payment = new Payment(this.client);
+    let response;
+    try {
+      response = await payment.get({ id: paymentId });
+    } catch (error: any) {
+      // Still not visible on MP's side: the webhook will settle it.
+      this.logger.warn(
+        `verifyPaymentForOrder: payment ${paymentId} unavailable (${error?.message ?? error})`,
+      );
+      return;
+    }
+
+    if (!response?.id) return;
+    if (
+      response.external_reference &&
+      response.external_reference !== orderId
+    ) {
+      this.logger.warn(
+        `verifyPaymentForOrder: payment ${paymentId} does not belong to order ${orderId}`,
+      );
+      return;
+    }
+
+    await this.handlePaymentNotification(paymentId);
+  }
+
   private async handlePaymentNotification(paymentId: string | number) {
     try {
       const payment = new Payment(this.client);

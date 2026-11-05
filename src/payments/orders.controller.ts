@@ -1,6 +1,14 @@
-import { Controller, Get, NotFoundException, Param } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Get,
+  NotFoundException,
+  Param,
+  Post,
+} from '@nestjs/common';
 import { ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { OrderService } from './services/order.service';
+import { PaymentsService } from './payments.service';
 import { Order } from './entities/order.entity';
 import { UserInfo } from '@app/auth/decorators/user-info.decorator';
 import { rewriteCartItemImageUrls } from '@app/utils/image-url';
@@ -8,7 +16,10 @@ import { rewriteCartItemImageUrls } from '@app/utils/image-url';
 @ApiTags('Orders')
 @Controller('orders')
 export class OrdersController {
-  constructor(private readonly orderService: OrderService) {}
+  constructor(
+    private readonly orderService: OrderService,
+    private readonly paymentsService: PaymentsService,
+  ) {}
 
   @Get()
   @ApiOperation({
@@ -25,6 +36,46 @@ export class OrdersController {
     // Reuse the cart helper — same productVariation.images shape applies.
     orders.forEach((order) => rewriteCartItemImageUrls(order.items as any));
     return orders;
+  }
+
+  @Post(':id/verify-payment')
+  @ApiOperation({
+    summary: 'Reconcile a payment right after the MercadoPago redirect',
+    description:
+      'Re-reads the payment from MercadoPago and updates the order. Used by ' +
+      'the checkout success page so a payment that already went through is ' +
+      'not shown as pending while the webhook arrives.',
+  })
+  @ApiResponse({ status: 200, description: 'Order with the refreshed status' })
+  async verifyPayment(
+    @Param('id') id: string,
+    @Body() body: { paymentId?: string },
+    @UserInfo() userInfo: any,
+  ): Promise<Order> {
+    // Ownership check first: only the shopper's own order can be synced.
+    const order = await this.orderService.findForCustomerById(
+      id,
+      userInfo.userId,
+      userInfo.sessionId,
+    );
+    if (!order) {
+      throw new NotFoundException('Order not found');
+    }
+
+    await this.paymentsService
+      .verifyPaymentForOrder(id, body?.paymentId)
+      .catch(() => undefined);
+
+    const updated = await this.orderService.findForCustomerById(
+      id,
+      userInfo.userId,
+      userInfo.sessionId,
+    );
+    if (!updated) {
+      throw new NotFoundException('Order not found');
+    }
+    rewriteCartItemImageUrls(updated.items as any);
+    return updated;
   }
 
   @Get(':id')
