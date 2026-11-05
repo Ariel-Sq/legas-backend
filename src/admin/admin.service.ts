@@ -703,12 +703,22 @@ export class AdminService {
       `SELECT o.id, o.status, o."totalAmount", o."customerEmail", o."customerPhone",
               o."deliveryMethod", o."deliveryAddress", o."depositAmount",
               o."balanceAmount", o."depositPaidAt", o."createdAt",
+              p.status AS "paymentStatus",
+              p."statusDetail" AS "paymentStatusDetail",
               COALESCE(SUM(oi.quantity), 0)::int AS items,
               STRING_AGG(oi.title, ' · ') AS titles
          FROM orders o
          LEFT JOIN order_items oi ON oi."orderId" = o.id
+         -- Payment state as stored by the MercadoPago webhook (latest event).
+         LEFT JOIN LATERAL (
+           SELECT opd.status, opd."statusDetail"
+             FROM order_payment_details opd
+            WHERE opd."orderId" = o.id
+            ORDER BY opd."createdAt" DESC
+            LIMIT 1
+         ) p ON TRUE
          ${status ? 'WHERE o.status = $1' : ''}
-         GROUP BY o.id
+         GROUP BY o.id, p.status, p."statusDetail"
          ORDER BY o."createdAt" DESC
          LIMIT 200`,
       status ? [status] : [],
