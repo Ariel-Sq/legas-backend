@@ -10,6 +10,7 @@ import { CartItem } from './entities/cart-item.entity';
 import { AddToCartDto } from './dto/add-to-cart.dto';
 import { UpdateCartItemDto } from './dto/update-cart-item.dto';
 import { ProductVariationsService } from '@app/products/products.service';
+import { PromotionsService } from '@app/site/promotions.service';
 import { rewriteCartItemImageUrls } from '@app/utils/image-url';
 import { randomUUID as uuidv4 } from 'node:crypto';
 
@@ -35,6 +36,7 @@ export class CartService {
     @InjectRepository(CartItem)
     private cartItemRepository: Repository<CartItem>,
     private productVariationsService: ProductVariationsService,
+    private readonly promotions: PromotionsService,
   ) {}
 
   async findAll(): Promise<Cart[]> {
@@ -45,13 +47,36 @@ export class CartService {
         'items.productVariation.images',
       ],
     });
-    carts.forEach((c) => rewriteCartItemImageUrls(c.items));
+    await Promise.all(carts.map((cart) => this.withImageUrls(cart)));
     return carts;
   }
 
-  private withImageUrls(cart: Cart): Cart {
+  private async withImageUrls(cart: Cart): Promise<Cart> {
     rewriteCartItemImageUrls(cart.items);
+    await this.attachPromotions(cart);
     return cart;
+  }
+
+  /**
+   * The stored price already includes cash/transfer promotions. Attaching the
+   * per-channel percentages lets the checkout show the card price without
+   * duplicating the promotion rules on the client (`mp` = card-only promo,
+   * `offline` = discount already inside `price`, undone for card payers).
+   */
+  private async attachPromotions(cart: Cart): Promise<void> {
+    if (!cart.items?.length) return;
+    const percents = await this.promotions.percentsForVariations(
+      cart.items.map((item) => item.productVariationId),
+    );
+    for (const item of cart.items) {
+      const promo = percents.get(item.productVariationId);
+      if (!promo) continue;
+      (
+        item as typeof item & {
+          promotions?: { offline: number; mp: number };
+        }
+      ).promotions = promo;
+    }
   }
 
   /**
@@ -110,7 +135,7 @@ export class CartService {
       }
     }
 
-    return this.withImageUrls(cart);
+    return await this.withImageUrls(cart);
   }
 
   /**
@@ -184,7 +209,7 @@ export class CartService {
     );
 
     const saved = await this.cartRepository.save(cart);
-    return this.withImageUrls(saved);
+    return await this.withImageUrls(saved);
   }
 
   /**
@@ -249,7 +274,7 @@ export class CartService {
     );
 
     const saved = await this.cartRepository.save(cart);
-    return this.withImageUrls(saved);
+    return await this.withImageUrls(saved);
   }
 
   // Remove a product from the cart
@@ -288,7 +313,7 @@ export class CartService {
     );
 
     const saved = await this.cartRepository.save(cart);
-    return this.withImageUrls(saved);
+    return await this.withImageUrls(saved);
   }
 
   async clearAll(): Promise<void> {
@@ -314,7 +339,7 @@ export class CartService {
     cart.totalPrice = 0;
 
     const saved = await this.cartRepository.save(cart);
-    return this.withImageUrls(saved);
+    return await this.withImageUrls(saved);
   }
 
   /**

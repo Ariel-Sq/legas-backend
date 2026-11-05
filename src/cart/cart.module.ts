@@ -6,6 +6,7 @@ import { Cart } from './entities/cart.entity';
 import { CartItem } from './entities/cart-item.entity';
 import { ProductsModule } from '@app/products/products.module';
 import { UsersModule } from '@app/users/users.module';
+import { SiteModule } from '@app/site/site.module';
 
 /**
  * Cart module for shopping cart functionality
@@ -16,6 +17,7 @@ import { UsersModule } from '@app/users/users.module';
     TypeOrmModule.forFeature([Cart, CartItem]),
     ProductsModule,
     UsersModule,
+    SiteModule,
   ],
   controllers: [CartController],
   providers: [CartService],

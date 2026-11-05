@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { In, Repository } from 'typeorm';
 import { Promotion } from './entities/promotion.entity';
 import { ProductVariation } from '@app/products/entities/product-variation.entity';
 
@@ -92,6 +92,45 @@ export class PromotionsService {
       categoryIds,
       channel,
     );
+  }
+
+  /**
+   * Discounts for several variations in one pass (cart responses). Same rules
+   * as `percentForVariation`, so the cart summary can show the card price
+   * without one query per item and channel.
+   */
+  async percentsForVariations(
+    variationIds: string[],
+  ): Promise<Map<string, { offline: number; mp: number }>> {
+    const unique = [...new Set(variationIds)];
+    const result = new Map<string, { offline: number; mp: number }>();
+    for (const id of unique) result.set(id, { offline: 0, mp: 0 });
+    if (unique.length === 0) return result;
+
+    const [variations, promos] = await Promise.all([
+      this.variations.find({
+        where: { id: In(unique) },
+        relations: ['template', 'template.categories'],
+      }),
+      this.activePromotions(),
+    ]);
+    if (promos.length === 0) return result;
+
+    for (const variation of variations) {
+      const categoryIds = (variation.template?.categories ?? []).map(
+        (category) => category.id,
+      );
+      result.set(variation.id, {
+        offline: this.bestPercent(
+          promos,
+          variation.template_id,
+          categoryIds,
+          'offline',
+        ),
+        mp: this.bestPercent(promos, variation.template_id, categoryIds, 'mp'),
+      });
+    }
+    return result;
   }
 
   /** Apply a percentage to a price, rounded to cents. */
