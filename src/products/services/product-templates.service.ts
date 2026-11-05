@@ -282,20 +282,35 @@ export class ProductTemplatesService {
 
     for (const template of templates) {
       const categoryIds = (template.categories ?? []).map((c) => c.id);
-      const percent = this.promotions.bestPercent(
+      const cashPercent = this.promotions.bestPercent(
         promos,
         template.id,
         categoryIds,
+        'cash',
       );
-      if (percent <= 0) continue;
+      const mpPercent = this.promotions.bestPercent(
+        promos,
+        template.id,
+        categoryIds,
+        'mp',
+      );
+      if (cashPercent <= 0 && mpPercent <= 0) continue;
 
       for (const variation of template.variations ?? []) {
-        const original = Number(variation.price);
-        (variation as unknown as { originalPrice?: number }).originalPrice =
-          original;
-        variation.price = this.promotions
-          .apply(original, percent)
-          .toFixed(2) as unknown as number;
+        if (cashPercent > 0) {
+          const original = Number(variation.price);
+          (variation as unknown as { originalPrice?: number }).originalPrice =
+            original;
+          variation.price = this.promotions
+            .apply(original, cashPercent)
+            .toFixed(2) as unknown as number;
+        }
+        if (mpPercent > 0) {
+          // Card-only discount: the cash price stays, the checkout applies
+          // this to the surcharged price.
+          (variation as unknown as { mpPercent?: number }).mpPercent =
+            mpPercent;
+        }
       }
     }
   }

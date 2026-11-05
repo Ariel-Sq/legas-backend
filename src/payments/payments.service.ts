@@ -12,6 +12,7 @@ import { OrderService } from './services/order.service';
 import { CartService } from '@app/cart/cart.service';
 import { Cart } from '@app/cart/entities/cart.entity';
 import { Order, OrderStatus } from './entities/order.entity';
+import { PromotionsService } from '@app/site/promotions.service';
 import {
   MERCADOPAGO_SURCHARGE_RATE,
   MERCADOPAGO_MAX_INSTALLMENTS,
@@ -61,6 +62,7 @@ export class PaymentsService {
     private orderService: OrderService,
     private cartService: CartService,
     private emailService: EmailService,
+    private readonly promotions: PromotionsService,
     @InjectDataSource()
     private readonly dataSource: DataSource,
   ) {
@@ -139,10 +141,41 @@ export class PaymentsService {
     // Catalogue prices are cash/transfer prices. MercadoPago carries a flat
     // surcharge (any method) — applied to the order total and to every MP
     // preference item so the charge matches the frontend summary.
-    const totalAmount =
-      Math.round(
-        Number(cart.totalPrice) * (1 + MERCADOPAGO_SURCHARGE_RATE) * 100,
-      ) / 100;
+    //
+    // Promotions per item:
+    //  - `offline` promos are undone here: a cash-only discount must not
+    //    leak into the card price (card payers keep paying the list price).
+    //  - `mercadopago` promos reduce the surcharged price.
+    const promos = await Promise.all(
+      cart.items.map(async (item) => ({
+        offline: await this.promotions.percentForVariation(
+          item.productVariationId,
+          'offline',
+        ),
+        mp: await this.promotions.percentForVariation(
+          item.productVariationId,
+          'mp',
+        ),
+      })),
+    );
+    const hasPromo = promos.some((p) => p.offline > 0 || p.mp > 0);
+
+    const totalAmount = hasPromo
+      ? Math.round(
+          cart.items.reduce((sum, item, index) => {
+            const unit = Number(item.price) / item.quantity;
+            const { offline, mp } = promos[index];
+            const base = unit / (1 - offline / 100);
+            const mpUnit =
+              Math.round(
+                base * (1 + MERCADOPAGO_SURCHARGE_RATE) * (1 - mp / 100) * 100,
+              ) / 100;
+            return sum + mpUnit * item.quantity;
+          }, 0) * 100,
+        ) / 100
+      : Math.round(
+          Number(cart.totalPrice) * (1 + MERCADOPAGO_SURCHARGE_RATE) * 100,
+        ) / 100;
 
     // Phase 1 — order create (no network calls inside). Products are made to
     // order, so nothing is reserved or decremented.
@@ -164,8 +197,12 @@ export class PaymentsService {
     // Phase 2 — call MercadoPago after COMMIT. If it fails, compensate.
     try {
       const items = await Promise.all(
-        cart.items.map((item) =>
-          this.mapCartItemToPreferenceItem(item, MERCADOPAGO_SURCHARGE_RATE),
+        cart.items.map((item, index) =>
+          this.mapCartItemToPreferenceItem(
+            item,
+            MERCADOPAGO_SURCHARGE_RATE,
+            promos[index] ?? { offline: 0, mp: 0 },
+          ),
         ),
       );
 
@@ -496,6 +533,7 @@ export class PaymentsService {
   private async mapCartItemToPreferenceItem(
     cartItem: any,
     surchargeRate: number,
+    promo: { offline: number; mp: number },
   ): Promise<PreferenceItem> {
     const product = await this.productsService.findByIdWithDetails(
       cartItem.productVariationId,
@@ -514,8 +552,11 @@ export class PaymentsService {
       // Method-dependent surcharge — see createCheckoutPreferenceFromCart.
       unit_price:
         Math.round(
-          (Number(cartItem.price) / cartItem.quantity) *
+          (Number(cartItem.price) /
+            cartItem.quantity /
+            (1 - promo.offline / 100)) *
             (1 + surchargeRate) *
+            (1 - promo.mp / 100) *
             100,
         ) / 100,
       currency_id: 'ARS',

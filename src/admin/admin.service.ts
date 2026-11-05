@@ -1137,6 +1137,7 @@ export class AdminService {
         name: dto.name.trim(),
         percent: dto.percent,
         scope: dto.scope ?? 'all',
+        method: dto.method ?? 'all',
         categoryId: dto.categoryId ?? null,
         templateId: dto.templateId ?? null,
         startsAt: normalizeStart(dto.startsAt),
@@ -1164,6 +1165,7 @@ export class AdminService {
       ...(dto.name !== undefined ? { name: dto.name.trim() } : {}),
       ...(dto.percent !== undefined ? { percent: dto.percent } : {}),
       ...(dto.scope !== undefined ? { scope: dto.scope } : {}),
+      ...(dto.method !== undefined ? { method: dto.method } : {}),
       ...(dto.categoryId !== undefined
         ? { categoryId: dto.categoryId || null }
         : {}),
@@ -1375,6 +1377,7 @@ interface PromotionDto {
   name: string;
   percent: number;
   scope?: 'all' | 'category' | 'product';
+  method?: 'all' | 'mercadopago' | 'offline';
   categoryId?: string | null;
   templateId?: string | null;
   startsAt?: string | null;

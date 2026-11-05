@@ -214,6 +214,10 @@ export class PromotionBodyDto {
   scope?: 'all' | 'category' | 'product';
 
   @IsOptional()
+  @IsIn(['all', 'mercadopago', 'offline'])
+  method?: 'all' | 'mercadopago' | 'offline';
+
+  @IsOptional()
   @IsUUID()
   categoryId?: string | null;
 

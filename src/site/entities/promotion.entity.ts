@@ -7,6 +7,8 @@ import {
 } from 'typeorm';
 
 export type PromotionScope = 'all' | 'category' | 'product';
+/** Which payment method the discount applies to. */
+export type PromotionMethod = 'all' | 'mercadopago' | 'offline';
 
 /**
  * Percentage discount. It is applied on top of the product price (and of the
@@ -27,6 +29,14 @@ export class Promotion {
 
   @Column({ type: 'varchar', length: 20, default: 'all' })
   scope: PromotionScope;
+
+  /**
+   * - all: lowers the catalogue (cash) price, so both methods get it
+   * - offline: same as today (cash IS the transfer price), kept explicit
+   * - mercadopago: only the card price (surcharge included) at checkout
+   */
+  @Column({ type: 'varchar', length: 20, default: 'all' })
+  method: PromotionMethod;
 
   @Column({ type: 'uuid', nullable: true })
   categoryId: string | null;
