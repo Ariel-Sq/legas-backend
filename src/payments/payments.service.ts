@@ -50,6 +50,11 @@ export const STOCK_HOLD_RELEASE_MINUTES = 90;
 // WhatsApp, so their stock hold is released on a much longer window.
 export const TRANSFER_RELEASE_DAYS = 14;
 
+/** Timeout for MercadoPago calls (their SDK has none). */
+const MP_TIMEOUT_MS = 10_000;
+/** Preference creation can be a bit slower than a plain read. */
+const MP_PREFERENCE_TIMEOUT_MS = 15_000;
+
 @Injectable()
 export class PaymentsService {
   private client: MercadoPagoConfig;
@@ -109,11 +114,12 @@ export class PaymentsService {
         idempotencyKey,
       );
       if (existing?.preferenceId) {
-        const preference = new Preference(this.client);
-        const pref = await preference.get({
-          preferenceId: existing.preferenceId,
-        });
-        return { ...pref, checkoutUrl: this.resolveCheckoutUrl(pref) };
+        // No MP round-trip on a retry: the Checkout Pro URL is deterministic
+        // and a slow `preference.get` was leaving the shopper on "Procesando".
+        return {
+          id: existing.preferenceId,
+          checkoutUrl: this.checkoutUrlForPreference(existing.preferenceId),
+        };
       }
     }
 
@@ -241,7 +247,11 @@ export class PaymentsService {
       };
 
       const preference = new Preference(this.client);
-      const response = await preference.create({ body: preferenceData });
+      const response = await this.withTimeout(
+        preference.create({ body: preferenceData }),
+        MP_PREFERENCE_TIMEOUT_MS,
+        'MercadoPago preference',
+      );
       // Remember the preference so a later supersede can expire it in MP.
       if (response.id) {
         await this.orderService
@@ -276,6 +286,46 @@ export class PaymentsService {
       this.configService.get<string>('MERCADOPAGO_SANDBOX') === 'true';
     const url = sandbox ? pref.sandbox_init_point : pref.init_point;
     return url ?? pref.init_point ?? pref.sandbox_init_point ?? '';
+  }
+
+  /**
+   * Checkout Pro URL for a known preference id. Building it locally avoids an
+   * MP round-trip on idempotent retries (and therefore avoids hanging the
+   * shopper when MP is slow).
+   */
+  private checkoutUrlForPreference(preferenceId: string): string {
+    const sandbox =
+      this.configService.get<string>('MERCADOPAGO_SANDBOX') === 'true';
+    const base = sandbox
+      ? 'https://sandbox.mercadopago.com.ar'
+      : 'https://www.mercadopago.com.ar';
+    return `${base}/checkout/v1/redirect?pref_id=${encodeURIComponent(
+      preferenceId,
+    )}`;
+  }
+
+  /**
+   * MercadoPago's SDK has no request timeout; a stuck call used to hang the
+   * serverless function until Vercel killed it, leaving the browser on
+   * "Procesando" forever. Fail fast instead.
+   */
+  private async withTimeout<T>(
+    promise: Promise<T>,
+    ms: number,
+    label: string,
+  ): Promise<T> {
+    let timer: NodeJS.Timeout | undefined;
+    const timeout = new Promise<never>((_, reject) => {
+      timer = setTimeout(
+        () => reject(new Error(`${label} timed out after ${ms}ms`)),
+        ms,
+      );
+    });
+    try {
+      return await Promise.race([promise, timeout]);
+    } finally {
+      if (timer) clearTimeout(timer);
+    }
   }
 
   /**
@@ -395,17 +445,21 @@ export class PaymentsService {
   private async expirePreference(preferenceId: string): Promise<void> {
     try {
       const preference = new Preference(this.client);
-      await preference.update({
-        id: preferenceId,
-        // Partial update: MP only touches the fields sent, but the SDK type
-        // demands the full PreferenceRequest (items included) — cast around it.
-        updatePreferenceRequest: {
-          expires: true,
-          expiration_date_to: new Date(Date.now() + 1000)
-            .toISOString()
-            .replace('Z', '+00:00'),
-        } as unknown as PreferenceRequest,
-      });
+      await this.withTimeout(
+        preference.update({
+          id: preferenceId,
+          // Partial update: MP only touches the fields sent, but the SDK type
+          // demands the full PreferenceRequest (items included) — cast around it.
+          updatePreferenceRequest: {
+            expires: true,
+            expiration_date_to: new Date(Date.now() + 1000)
+              .toISOString()
+              .replace('Z', '+00:00'),
+          } as unknown as PreferenceRequest,
+        }),
+        MP_TIMEOUT_MS,
+        'MercadoPago preference expiry',
+      );
     } catch (error: any) {
       this.logger.warn(
         `could not expire preference ${preferenceId}: ${error.message}`,
@@ -623,7 +677,11 @@ export class PaymentsService {
     const payment = new Payment(this.client);
     let response;
     try {
-      response = await payment.get({ id: paymentId });
+      response = await this.withTimeout(
+        payment.get({ id: paymentId }),
+        MP_TIMEOUT_MS,
+        'MercadoPago payment read',
+      );
     } catch (error: any) {
       // Still not visible on MP's side: the webhook will settle it.
       this.logger.warn(
@@ -651,7 +709,11 @@ export class PaymentsService {
       const payment = new Payment(this.client);
       let response;
       try {
-        response = await payment.get({ id: paymentId.toString() });
+        response = await this.withTimeout(
+          payment.get({ id: paymentId.toString() }),
+          MP_TIMEOUT_MS,
+          'MercadoPago payment read',
+        );
       } catch (e: any) {
         // MercadoPago answers 404 for two practical cases: the dashboard
         // "Simulate notification" sends payment_id=123456 which never exists,

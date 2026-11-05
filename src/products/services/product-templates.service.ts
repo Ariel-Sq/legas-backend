@@ -101,11 +101,26 @@ export class ProductTemplatesService {
       /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(
         slugOrId,
       );
-    const template = await this.productTemplatesRepository.findOne({
+    let template = await this.productTemplatesRepository.findOne({
       where: isUuid ? { id: slugOrId } : { slug: slugOrId },
       relations: ['categories', 'variations', 'variations.priceTiers'],
       order: { variations: { sort_order: 'ASC' } },
     });
+
+    // Legacy links (cart, wishlist, old orders) point at a VARIATION id, not
+    // the template. Resolve it so the product page doesn't 404 those links.
+    if (!template && isUuid) {
+      const variation = await this.productVariationsRepository.findOne({
+        where: { id: slugOrId },
+      });
+      if (variation?.template_id) {
+        template = await this.productTemplatesRepository.findOne({
+          where: { id: variation.template_id },
+          relations: ['categories', 'variations', 'variations.priceTiers'],
+          order: { variations: { sort_order: 'ASC' } },
+        });
+      }
+    }
 
     // Hidden in the panel = not reachable from the shop, even with a direct
     // link (keeps "oculto" consistent with the lists).
