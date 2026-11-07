@@ -25,9 +25,12 @@ export type CheckoutPaymentMethod = (typeof CHECKOUT_PAYMENT_METHODS)[number];
 export const MERCADOPAGO_SURCHARGE_RATE = 0.15;
 
 /**
- * Installments offered on the MercadoPago screen.
+ * Installments offered on the MercadoPago screen. Interest-free installments
+ * are configured in the MercadoPago account (up to N); the rest carry the
+ * issuer's interest, paid by the shopper. Keep in sync with the frontend's
+ * INSTALLMENT_COUNT (lib/pricing.ts).
  */
-export const MERCADOPAGO_MAX_INSTALLMENTS = 6;
+export const MERCADOPAGO_MAX_INSTALLMENTS = 12;
 
 /**
  * Deposit for cash/transfer orders picked up at the shop: 50% by transfer to
