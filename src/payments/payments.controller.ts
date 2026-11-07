@@ -4,12 +4,14 @@ import {
   Get,
   Post,
   Query,
+  Param,
   HttpCode,
   BadRequestException,
 } from '@nestjs/common';
 import { ApiOperation, ApiResponse } from '@nestjs/swagger';
 import { PaymentsService } from './payments.service';
 import { CreateCheckoutRequestDto } from './dto/create-checkout-request.dto';
+import { CardCheckoutIntentDto, CardPaymentDto } from './dto/card-payment.dto';
 import { UserInfo } from '@app/auth/decorators/user-info.decorator';
 import type { UserInfoType } from '@app/auth/decorators/user-info.decorator';
 import { CartService } from '@app/cart/cart.service';
@@ -103,6 +105,81 @@ export class PaymentsController {
         body.idempotencyKey,
       );
     return { mode: 'mercadopago', ...preference };
+  }
+
+  /**
+   * On-site card payment, step 1: create the order hold and return the
+   * amount to tokenize. No MercadoPago redirect — the shopper stays on our
+   * checkout and fills the card form (Card Payment Brick).
+   */
+  @Post('/card/intent')
+  @ApiOperation({
+    summary: 'Create the order hold for the on-site card form',
+    description:
+      'Creates a processing_payment order at the MercadoPago price and returns the amount the card form must charge.',
+  })
+  @ApiResponse({ status: 201, description: 'Order created' })
+  @ApiResponse({ status: 400, description: 'Cart is empty' })
+  async createCardIntent(
+    @UserInfo() userInfo: UserInfoType,
+    @Body() body: CardCheckoutIntentDto = {},
+  ) {
+    const cart = await this.cartService.getOrCreateCart(
+      userInfo.userId,
+      userInfo.sessionId,
+    );
+    if (!cart.items || cart.items.length === 0) {
+      throw new BadRequestException('Cart is empty');
+    }
+    return this.paymentsService.createCardIntent(
+      cart,
+      userInfo.userId,
+      userInfo.sessionId,
+      {
+        customerEmail: body.customerEmail,
+        customerPhone: body.customerPhone,
+        customerDni: body.customerDni,
+        deliveryMethod: body.deliveryMethod,
+        deliveryAddress: body.deliveryAddress,
+      },
+      body.idempotencyKey,
+    );
+  }
+
+  /**
+   * On-site card payment, step 2: charge the tokenized card. The amount is
+   * read from the stored order, never from the request.
+   */
+  @Post('/card/pay')
+  @ApiOperation({ summary: 'Charge a tokenized card for an existing order' })
+  @ApiResponse({ status: 201, description: 'Payment created' })
+  @ApiResponse({ status: 400, description: 'Order is not awaiting payment' })
+  @ApiResponse({ status: 404, description: 'Order not found' })
+  async payWithCard(
+    @UserInfo() userInfo: UserInfoType,
+    @Body() body: CardPaymentDto,
+  ) {
+    return this.paymentsService.createCardPayment(
+      body,
+      userInfo.userId,
+      userInfo.sessionId,
+    );
+  }
+
+  /** Order state for the shopper after the 3DS challenge (polling). */
+  @Get('/card/order/:orderId')
+  @ApiOperation({ summary: 'Current status of a card order' })
+  @ApiResponse({ status: 200, description: 'Order status' })
+  @ApiResponse({ status: 404, description: 'Order not found' })
+  async cardOrderStatus(
+    @UserInfo() userInfo: UserInfoType,
+    @Param('orderId') orderId: string,
+  ) {
+    return this.paymentsService.getCardOrderStatus(
+      orderId,
+      userInfo.userId,
+      userInfo.sessionId,
+    );
   }
 
   @Post('/mercadopago/webhook')
