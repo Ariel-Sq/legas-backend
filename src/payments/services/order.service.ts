@@ -270,6 +270,30 @@ export class OrderService {
   }
 
   /**
+   * Find a still-live checkout hold for the owner + idempotency key, with or
+   * without a MercadoPago preference. Card-intent holds have no preference,
+   * so they need this variant; `findLiveByCheckoutKey` stays for Checkout Pro.
+   */
+  async findLiveByCheckoutKeyAny(
+    userId: string | undefined,
+    sessionId: string | undefined,
+    checkoutKey: string,
+  ): Promise<Order | null> {
+    const qb = this.orderRepository
+      .createQueryBuilder('order')
+      .where('order.checkoutKey = :checkoutKey', { checkoutKey })
+      .andWhere('order.status = :status', {
+        status: OrderStatus.PROCESSING_PAYMENT,
+      });
+    if (userId) {
+      qb.andWhere('order.userId = :userId', { userId });
+    } else {
+      qb.andWhere('order.sessionId = :sessionId', { sessionId });
+    }
+    return qb.getOne();
+  }
+
+  /**
    * Whether the order already has an approved/pending payment. Used to avoid
    * cancelling an order that was actually paid (e.g. webhook still in flight)
    * during a supersede/expiry sweep.

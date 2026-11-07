@@ -1,4 +1,9 @@
-import { Injectable, Logger, BadRequestException } from '@nestjs/common';
+import {
+  Injectable,
+  Logger,
+  BadRequestException,
+  NotFoundException,
+} from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { InjectDataSource } from '@nestjs/typeorm';
 import { DataSource } from 'typeorm';
@@ -8,6 +13,7 @@ import { UsersService } from '@app/users/users.service';
 import { CheckoutItemDto } from './dto/checkout.dto';
 import { PreferenceRequest } from 'mercadopago/dist/clients/preference/commonTypes';
 import { PaymentData } from './types/payment.types';
+import type { CardPaymentResult, MpThreeDsInfo } from './types/payment.types';
 import { OrderService } from './services/order.service';
 import { CartService } from '@app/cart/cart.service';
 import { Cart } from '@app/cart/entities/cart.entity';
@@ -54,6 +60,8 @@ export const TRANSFER_RELEASE_DAYS = 14;
 const MP_TIMEOUT_MS = 10_000;
 /** Preference creation can be a bit slower than a plain read. */
 const MP_PREFERENCE_TIMEOUT_MS = 15_000;
+/** Charging a tokenized card is slower than a read (issuer round-trip). */
+const MP_PAYMENT_TIMEOUT_MS = 25_000;
 
 @Injectable()
 export class PaymentsService {
@@ -149,44 +157,7 @@ export class PaymentsService {
       id: item.productVariationId,
       quantity: item.quantity,
     }));
-    // Catalogue prices are cash/transfer prices. MercadoPago carries a flat
-    // surcharge (any method) — applied to the order total and to every MP
-    // preference item so the charge matches the frontend summary.
-    //
-    // Promotions per item:
-    //  - `offline` promos are undone here: a cash-only discount must not
-    //    leak into the card price (card payers keep paying the list price).
-    //  - `mercadopago` promos reduce the surcharged price.
-    const promos = await Promise.all(
-      cart.items.map(async (item) => ({
-        offline: await this.promotions.percentForVariation(
-          item.productVariationId,
-          'offline',
-        ),
-        mp: await this.promotions.percentForVariation(
-          item.productVariationId,
-          'mp',
-        ),
-      })),
-    );
-    const hasPromo = promos.some((p) => p.offline > 0 || p.mp > 0);
-
-    const totalAmount = hasPromo
-      ? Math.round(
-          cart.items.reduce((sum, item, index) => {
-            const unit = Number(item.price) / item.quantity;
-            const { offline, mp } = promos[index];
-            const base = unit / (1 - offline / 100);
-            const mpUnit =
-              Math.round(
-                base * (1 + MERCADOPAGO_SURCHARGE_RATE) * (1 - mp / 100) * 100,
-              ) / 100;
-            return sum + mpUnit * item.quantity;
-          }, 0) * 100,
-        ) / 100
-      : Math.round(
-          Number(cart.totalPrice) * (1 + MERCADOPAGO_SURCHARGE_RATE) * 100,
-        ) / 100;
+    const { promos, totalAmount } = await this.priceCartForMercadoPago(cart);
 
     // Phase 1 — order create (no network calls inside). Products are made to
     // order, so nothing is reserved or decremented.
@@ -587,6 +558,307 @@ export class PaymentsService {
     if (compensated) {
       this.logger.log(`Compensated stock + ${target} order ${orderId}`);
     }
+  }
+
+  /**
+   * Catalogue prices are cash/transfer prices. MercadoPago carries a flat
+   * surcharge (any method) — applied to the order total and to every MP
+   * preference item so the charge matches the frontend summary.
+   *
+   * Promotions per item:
+   *  - `offline` promos are undone here: a cash-only discount must not
+   *    leak into the card price (card payers keep paying the list price).
+   *  - `mercadopago` promos reduce the surcharged price.
+   *
+   * Shared by Checkout Pro and the on-site card form so both charge the
+   * exact same amount.
+   */
+  private async priceCartForMercadoPago(cart: Cart): Promise<{
+    promos: { offline: number; mp: number }[];
+    totalAmount: number;
+  }> {
+    const promos = await Promise.all(
+      cart.items.map(async (item) => ({
+        offline: await this.promotions.percentForVariation(
+          item.productVariationId,
+          'offline',
+        ),
+        mp: await this.promotions.percentForVariation(
+          item.productVariationId,
+          'mp',
+        ),
+      })),
+    );
+    const hasPromo = promos.some((p) => p.offline > 0 || p.mp > 0);
+
+    const totalAmount = hasPromo
+      ? Math.round(
+          cart.items.reduce((sum, item, index) => {
+            const unit = Number(item.price) / item.quantity;
+            const { offline, mp } = promos[index];
+            const base = unit / (1 - offline / 100);
+            const mpUnit =
+              Math.round(
+                base * (1 + MERCADOPAGO_SURCHARGE_RATE) * (1 - mp / 100) * 100,
+              ) / 100;
+            return sum + mpUnit * item.quantity;
+          }, 0) * 100,
+        ) / 100
+      : Math.round(
+          Number(cart.totalPrice) * (1 + MERCADOPAGO_SURCHARGE_RATE) * 100,
+        ) / 100;
+
+    return { promos, totalAmount };
+  }
+
+  /**
+   * Step 1 of the on-site card flow: reserve the order at the MercadoPago
+   * price and return the amount the Card Payment Brick must tokenize.
+   *
+   * No preference is created — the shopper never leaves the site. The order
+   * is a normal `processing_payment` hold, so the same sweeps (supersede,
+   * lazy release, cron) apply if the shopper abandons the form.
+   */
+  async createCardIntent(
+    cart: Cart,
+    userId?: string,
+    sessionId?: string,
+    contact: {
+      customerEmail?: string;
+      customerPhone?: string;
+      customerDni?: string;
+      deliveryMethod?: 'delivery' | 'pickup';
+      deliveryAddress?: string;
+    } = {},
+    idempotencyKey?: string,
+  ): Promise<{ orderId: string; amount: number }> {
+    if (userId) {
+      await this.usersService.findById(userId);
+    }
+    if (!cart.items || cart.items.length === 0) {
+      throw new BadRequestException('Cart is empty');
+    }
+
+    // Re-click / retry: reuse the hold created by the previous attempt.
+    if (idempotencyKey) {
+      const existing = await this.orderService.findLiveByCheckoutKeyAny(
+        userId,
+        sessionId,
+        idempotencyKey,
+      );
+      if (existing) {
+        return {
+          orderId: existing.id,
+          amount: Number(existing.totalAmount),
+        };
+      }
+    }
+
+    await this.supersedePendingCheckouts(userId, sessionId).catch((err) =>
+      this.logger.warn(`supersedePendingCheckouts failed: ${err.message}`),
+    );
+    await this.releaseExpiredCheckouts().catch((err) =>
+      this.logger.warn(`releaseExpiredCheckouts failed: ${err.message}`),
+    );
+
+    const checkoutItems: CheckoutItemDto[] = cart.items.map((item) => ({
+      id: item.productVariationId,
+      quantity: item.quantity,
+    }));
+    const { totalAmount } = await this.priceCartForMercadoPago(cart);
+
+    const order = await this.dataSource.transaction((manager) =>
+      this.orderService.createOrderInTx(manager, {
+        userId,
+        sessionId,
+        items: checkoutItems,
+        totalAmount,
+        customerEmail: contact.customerEmail,
+        customerPhone: contact.customerPhone,
+        customerDni: contact.customerDni,
+        deliveryMethod: contact.deliveryMethod,
+        deliveryAddress: contact.deliveryAddress,
+        checkoutKey: idempotencyKey,
+      }),
+    );
+
+    return { orderId: order.id, amount: Number(order.totalAmount) };
+  }
+
+  /**
+   * Step 2 of the on-site card flow: charge the token the Brick produced.
+   *
+   * The amount always comes from the stored order — never from the client.
+   * The payment is then pushed through the SAME state machine the webhook
+   * uses (`handlePaymentNotification`), so stock, emails, cart clearing and
+   * the order status behave identically in both flows.
+   */
+  async createCardPayment(
+    dto: {
+      orderId: string;
+      token: string;
+      paymentMethodId: string;
+      installments: number;
+      issuerId?: string;
+      payer: {
+        email: string;
+        identification?: { type: string; number: string };
+        firstName?: string;
+        lastName?: string;
+      };
+    },
+    userId?: string,
+    sessionId?: string,
+  ): Promise<CardPaymentResult> {
+    const order = await this.orderService.findForCustomerById(
+      dto.orderId,
+      userId,
+      sessionId,
+    );
+    if (!order) {
+      throw new NotFoundException('Order not found');
+    }
+    if (order.status !== OrderStatus.PROCESSING_PAYMENT) {
+      // Already paid/expired: never charge twice, report the current state.
+      throw new BadRequestException(
+        `Order is not awaiting payment (status: ${order.status})`,
+      );
+    }
+
+    const payment = new Payment(this.client);
+    let response;
+    try {
+      response = await this.withTimeout(
+        payment.create({
+          body: {
+            transaction_amount: Number(order.totalAmount),
+            token: dto.token,
+            description: `Pedido ${order.id.slice(0, 8).toUpperCase()}`,
+            installments: Number(dto.installments) || 1,
+            payment_method_id: dto.paymentMethodId,
+            ...(dto.issuerId ? { issuer_id: Number(dto.issuerId) } : {}),
+            payer: {
+              email: dto.payer.email || order.customerEmail || undefined,
+              ...(dto.payer.identification
+                ? {
+                    identification: {
+                      type: dto.payer.identification.type,
+                      number: dto.payer.identification.number,
+                    },
+                  }
+                : {}),
+              ...(dto.payer.firstName
+                ? { first_name: dto.payer.firstName }
+                : {}),
+              ...(dto.payer.lastName ? { last_name: dto.payer.lastName } : {}),
+            },
+            external_reference: order.id,
+            statement_descriptor: 'LEGAS MUEBLES',
+            notification_url: this.configService.getOrThrow<string>(
+              'MERCADO_PAGO_WEBHOOK_URL',
+            ),
+          },
+          requestOptions: { idempotencyKey: `card-${order.id}-${dto.token}` },
+        }),
+        MP_PAYMENT_TIMEOUT_MS,
+        'MercadoPago card payment',
+      );
+    } catch (error: any) {
+      this.logger.error(
+        `MercadoPago card payment failed for order ${order.id}: ${error.message}`,
+      );
+      throw new BadRequestException(
+        this.translateMpError(error) ||
+          'No pudimos procesar el pago con la tarjeta.',
+      );
+    }
+
+    if (!response?.id) {
+      throw new BadRequestException('MercadoPago no devolvió un pago válido.');
+    }
+
+    // Same pipeline as the webhook (idempotent by payment id). Failures here
+    // must not break the response: the webhook will retry the same payment.
+    try {
+      await this.handlePaymentNotification(response.id);
+    } catch (error: any) {
+      this.logger.warn(
+        `card payment ${response.id} created but not applied yet: ${error.message}`,
+      );
+    }
+
+    const threeDs = (response as { three_ds_info?: MpThreeDsInfo })
+      .three_ds_info;
+
+    return {
+      orderId: order.id,
+      paymentId: String(response.id),
+      status: String(response.status ?? ''),
+      statusDetail: String(response.status_detail ?? ''),
+      statusMessage: this.cardStatusMessage(
+        String(response.status ?? ''),
+        String(response.status_detail ?? ''),
+      ),
+      threeDs: threeDs?.creq
+        ? {
+            externalResourceUrl: threeDs.external_resource_url ?? '',
+            creq: threeDs.creq,
+          }
+        : undefined,
+    };
+  }
+
+  /** Current state of a card order, polled by the shopper after a 3DS challenge. */
+  async getCardOrderStatus(
+    orderId: string,
+    userId?: string,
+    sessionId?: string,
+  ): Promise<{ orderId: string; status: OrderStatus }> {
+    const order = await this.orderService.findForCustomerById(
+      orderId,
+      userId,
+      sessionId,
+    );
+    if (!order) {
+      throw new NotFoundException('Order not found');
+    }
+    return { orderId: order.id, status: order.status };
+  }
+
+  /** Shopper-facing message for a card result. */
+  private cardStatusMessage(status: string, statusDetail: string): string {
+    if (status === 'approved') return 'Pago aprobado.';
+    if (status === 'pending' || status === 'in_process') {
+      return statusDetail === 'pending_challenge'
+        ? 'Falta la verificación del banco.'
+        : 'El pago quedó pendiente de acreditación.';
+    }
+    if (status === 'rejected' || status === 'failed') {
+      const byDetail: Record<string, string> = {
+        cc_rejected_insufficient_amount:
+          'La tarjeta no tiene fondos suficientes.',
+        cc_rejected_bad_filled_security_code:
+          'El código de seguridad es incorrecto.',
+        cc_rejected_bad_filled_date: 'La fecha de vencimiento es incorrecta.',
+        cc_rejected_bad_filled_card_number:
+          'El número de tarjeta es incorrecto.',
+        cc_rejected_call_for_authorize:
+          'Tenés que autorizar el pago con tu banco.',
+        cc_rejected_high_risk: 'El banco rechazó la operación por seguridad.',
+        cc_rejected_max_attempts: 'Superaste los intentos permitidos.',
+        cc_rejected_other_reason: 'El banco rechazó el pago.',
+      };
+      return byDetail[statusDetail] ?? 'El pago fue rechazado.';
+    }
+    return 'No pudimos completar el pago.';
+  }
+
+  /** Best-effort readable message for a MercadoPago API error. */
+  private translateMpError(error: any): string | null {
+    const cause = error?.cause ?? error?.error?.cause ?? error?.response?.cause;
+    const first = Array.isArray(cause) ? cause[0] : cause;
+    const description = first?.description ?? first?.code;
+    return typeof description === 'string' ? description : null;
   }
 
   private async mapCartItemToPreferenceItem(
