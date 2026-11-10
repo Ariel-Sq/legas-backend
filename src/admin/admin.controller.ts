@@ -30,6 +30,7 @@ import {
   UpdateReviewStatusDto,
   UpdateUserRoleDto,
   UpdateVariationDto,
+  SendTestEmailDto,
 } from './dto/admin.dto';
 import { UserRole } from '@app/users/entities/user.entity';
 
@@ -74,6 +75,17 @@ export class AdminController {
   @Roles(UserRole.OWNER, UserRole.ADMIN, UserRole.EDITOR)
   listCategories() {
     return this.adminService.listCategories();
+  }
+
+  /**
+   * Mailer diagnostic: sends a real email so the operator can confirm the
+   * credentials work without placing a test order.
+   */
+  @Post('emails/test')
+  @Roles(UserRole.OWNER, UserRole.ADMIN)
+  @ApiOperation({ summary: 'Send a test email to check the mailer' })
+  sendTestEmail(@Body() dto: SendTestEmailDto, @Req() req: any) {
+    return this.adminService.sendTestEmail(dto.to, this.actor(req));
   }
 
   @Post('categories')

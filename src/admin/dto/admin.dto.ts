@@ -263,3 +263,11 @@ export class SlideBodyDto {
   @IsBoolean()
   isActive?: boolean;
 }
+
+/** Body for POST /api/admin/emails/test — the mailer diagnostic. */
+export class SendTestEmailDto {
+  @IsOptional()
+  @IsEmail()
+  @MaxLength(255)
+  to?: string;
+}
