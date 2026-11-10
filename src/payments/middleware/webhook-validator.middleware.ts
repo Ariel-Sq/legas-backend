@@ -14,7 +14,12 @@ export class WebhookValidatorMiddleware implements NestMiddleware {
   use(req: Request, _res: Response, next: NextFunction) {
     const xSignature = req.headers['x-signature'] as string;
     const xRequestId = req.headers['x-request-id'] as string;
-    const dataId = req.query['data.id'] as string;
+    // MercadoPago sends the resource id as `data.id` on webhooks and as `id`
+    // on legacy IPN deliveries (`?id=123&topic=payment`). The signature
+    // manifest is built with whichever one the request carries, so both must
+    // be accepted here — otherwise a signed legacy notification fails with
+    // "missing headers" and MP keeps retrying it.
+    const dataId = (req.query['data.id'] ?? req.query['id']) as string;
 
     // Legacy IPN notifications ("Pago (legacy)") arrive as
     // `?topic=payment&id=123` with no signature. They are accepted here and
