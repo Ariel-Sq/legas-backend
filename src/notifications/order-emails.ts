@@ -6,6 +6,12 @@ export interface OrderEmailContent {
 }
 
 const WHATSAPP = 'https://wa.me/5491134414929';
+const WHATSAPP_NUMBER = '5491134414929';
+
+/** Deep link that opens WhatsApp with the message already written. */
+function whatsappLink(text: string): string {
+  return `https://wa.me/${WHATSAPP_NUMBER}?text=${encodeURIComponent(text)}`;
+}
 
 /**
  * Public storefront URL for links inside the emails. Configurable via
@@ -48,9 +54,12 @@ export function orderEmailFor(
           `¡Gracias por tu compra!\n\n` +
           `Recibimos el pago de tu pedido ${shortId} y ya estamos preparando ` +
           `todo para la fabricación. Como nuestros muebles se hacen a pedido, ` +
-          `en breve te escribimos por WhatsApp para coordinar detalles y plazos.\n\n` +
-          `Podés seguir el estado en ${ORDERS_URL}\n\n` +
-          `Cualquier duda: ${WHATSAPP}\n\n— Legas Muebles`,
+          `los detalles y los plazos los coordinamos por WhatsApp.\n\n` +
+          `Confirmá tu pedido por WhatsApp (te abre el mensaje ya escrito):\n` +
+          `${whatsappLink(
+            `Hola Legas! Quiero confirmar mi pedido ${shortId}.`,
+          )}\n\n` +
+          `Podés seguir el estado en ${ORDERS_URL}\n\n— Legas Muebles`,
       };
     case OrderStatus.PAID_READY_TO_SHIP:
       return {
