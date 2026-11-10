@@ -14,6 +14,23 @@ function whatsappLink(text: string): string {
 }
 
 /**
+ * Best-effort WhatsApp link for a customer phone as typed at checkout
+ * ("+54 9 11 3441-4929", "011 3441-4929", "1134414929"). The raw number is
+ * always printed too, so a malformed number never loses the contact.
+ */
+function whatsappFromPhone(raw?: string | null): string | null {
+  if (!raw) return null;
+  const digits = raw.replace(/\D/g, '');
+  if (digits.length < 8) return null;
+  const international = digits.startsWith('54')
+    ? digits
+    : digits.startsWith('0')
+      ? `54${digits.slice(1)}`
+      : `549${digits}`;
+  return `https://wa.me/${international}`;
+}
+
+/**
  * Public storefront URL for links inside the emails. Configurable via
  * FRONTEND_URL (set it in prod, e.g. https://legasmuebles.com); falls back to
  * the legacy domain so a missing env doesn't produce broken links.
@@ -42,10 +59,13 @@ export function orderEmailFor(
         text:
           `¡Gracias por tu compra!\n\n` +
           `Registramos tu pedido ${shortId}. Elegiste pagar por transferencia ` +
-          `o efectivo, así que te vamos a escribir por WhatsApp para pasarte los ` +
-          `datos y coordinar el pago y la entrega. Tu pedido queda reservado.\n\n` +
-          `Podés seguir el estado en ${ORDERS_URL}\n\n` +
-          `O escribinos vos: ${WHATSAPP}\n\n— Legas Muebles`,
+          `o efectivo, así que coordinamos el pago y la entrega por WhatsApp. ` +
+          `Tu pedido queda reservado.\n\n` +
+          `Coordinar el pago por WhatsApp (te abre el mensaje ya escrito):\n` +
+          `${whatsappLink(
+            `Hola Legas! Quiero coordinar el pago de mi pedido ${shortId}.`,
+          )}\n\n` +
+          `Podés seguir el estado en ${ORDERS_URL}\n\n— Legas Muebles`,
       };
     case OrderStatus.PAID_PREPARING:
       return {
@@ -190,6 +210,8 @@ export function shopOrderEmailFor(
       'El pago no se acreditó y el stock se liberó. Si el cliente insiste, que vuelva a intentar.',
   }[event];
 
+  const customerWa = whatsappFromPhone(order.customerPhone);
+
   return {
     subject: `[${EVENT_TITLES[event]}] Pedido ${shortId} — Legas Muebles`,
     text:
@@ -199,7 +221,8 @@ export function shopOrderEmailFor(
       `Fecha: ${new Date().toLocaleString('es-AR', { timeZone: 'America/Argentina/Buenos_Aires' })}\n\n` +
       `CLIENTE\n` +
       `Email: ${order.customerEmail ?? '—'}\n` +
-      `Teléfono: ${order.customerPhone ?? '—'}\n` +
+      `Teléfono: ${order.customerPhone ?? '—'}` +
+      `${customerWa ? `\nEscribirle por WhatsApp: ${customerWa}` : ''}\n` +
       `DNI: ${order.customerDni ?? '—'}\n\n` +
       `ENTREGA\n${delivery}\n\n` +
       `PRODUCTOS\n${items || '—'}\n\n` +

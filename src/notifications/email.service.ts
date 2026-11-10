@@ -69,7 +69,27 @@ export class EmailService {
 
   /** Fire-and-forget send; failures are logged, never thrown. */
   async send(to: string, subject: string, text: string): Promise<boolean> {
-    if (!this.enabled) return false;
+    const result = await this.sendDetailed(to, subject, text);
+    return result.ok;
+  }
+
+  /**
+   * Same as `send()` but returns the failure reason. Used by the admin
+   * "send test email" action, where the operator needs to see WHY it failed
+   * instead of digging through the server logs.
+   */
+  async sendDetailed(
+    to: string,
+    subject: string,
+    text: string,
+  ): Promise<{ ok: boolean; error?: string }> {
+    if (!this.enabled) {
+      return {
+        ok: false,
+        error:
+          'El envío de correo está deshabilitado: faltan credenciales (Gmail API o SMTP_USER/SMTP_PASS).',
+      };
+    }
     try {
       if (this.usingGmailApi) {
         await this.sendWithGmailApi(to, subject, text);
@@ -84,10 +104,10 @@ export class EmailService {
         });
       }
       this.logger.log(`Email sent to ${to}: ${subject}`);
-      return true;
+      return { ok: true };
     } catch (error: any) {
       this.logger.error(`Email to ${to} failed: ${error.message}`);
-      return false;
+      return { ok: false, error: error.message };
     }
   }
 

@@ -184,6 +184,41 @@ export class AdminService {
   }
 
   /**
+   * Send a real email through the configured mailer and report the reason when
+   * it fails. Powers the "enviar mail de prueba" button in the panel, which
+   * exists because a broken Gmail/OAuth credential used to be invisible until
+   * a customer complained about a missing confirmation.
+   */
+  async sendTestEmail(to: string | undefined, actor: AdminActor) {
+    const recipient = (to ?? actor.email ?? '').trim();
+    if (!recipient) {
+      throw new BadRequestException('Falta el destinatario');
+    }
+
+    const result = await this.email.sendDetailed(
+      recipient,
+      'Mail de prueba — Legas Muebles',
+      `Este es un mail de prueba enviado desde el panel de Legas Muebles.\n\n` +
+        `Si lo estás leyendo, el envío de correos funciona.\n\n` +
+        `Fecha: ${new Date().toLocaleString('es-AR', {
+          timeZone: 'America/Argentina/Buenos_Aires',
+        })}\n` +
+        `Enviado por: ${actor.email}\n\n— Legas Muebles`,
+    );
+
+    await this.audit.log({
+      actorId: actor.id,
+      actorEmail: actor.email,
+      action: 'test-email',
+      entity: 'email',
+      entityId: recipient,
+      payload: { ok: result.ok, error: result.error ?? null },
+    });
+
+    return { ...result, to: recipient };
+  }
+
+  /**
    * Only people with panel access (owner/admin/editor) are listed. Store
    * customers are not staff and never show up here; to give one access, invite
    * their email — the invite upgrades the existing row instead of duplicating
